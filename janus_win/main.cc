@@ -17,6 +17,9 @@
 #include "rtc_base/win32socketinit.h"
 #include "rtc_base/win32socketserver.h"
 
+#include <uWS.h>
+using namespace uWS;
+
 int PASCAL wWinMain(HINSTANCE instance,
                     HINSTANCE prev_instance,
                     wchar_t* cmd_line,
@@ -35,6 +38,7 @@ int PASCAL wWinMain(HINSTANCE instance,
     rtc::FlagList::Print(NULL, false);
     return 0;
   }
+
 
   // Abort if the user specifies a port that is outside the allowed
   // range [1, 65535].
