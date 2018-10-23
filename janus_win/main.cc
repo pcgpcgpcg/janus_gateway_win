@@ -17,8 +17,7 @@
 #include "rtc_base/win32socketinit.h"
 #include "rtc_base/win32socketserver.h"
 
-#include <uWS.h>
-using namespace uWS;
+#include "websocketAgent.h"
 
 int PASCAL wWinMain(HINSTANCE instance,
                     HINSTANCE prev_instance,
@@ -57,6 +56,10 @@ int PASCAL wWinMain(HINSTANCE instance,
   PeerConnectionClient client;
   rtc::scoped_refptr<Conductor> conductor(
       new rtc::RefCountedObject<Conductor>(&client, &wnd));
+
+  //test websocket
+  websocketAgent agent;
+  agent.ConnectToRoom(string("1234"));
 
   // Main loop.
   MSG msg;

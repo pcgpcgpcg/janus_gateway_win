@@ -30,6 +30,9 @@
     <ClInclude Include="peer_connection_client.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="websocketAgent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="conductor.cc">
@@ -45,6 +48,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="peer_connection_client.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="websocketAgent.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

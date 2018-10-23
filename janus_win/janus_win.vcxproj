@@ -132,6 +132,7 @@
     <ClInclude Include="flagdefs.h" />
     <ClInclude Include="main_wnd.h" />
     <ClInclude Include="peer_connection_client.h" />
+    <ClInclude Include="websocketAgent.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="conductor.cc" />
@@ -139,6 +140,7 @@
     <ClCompile Include="main.cc" />
     <ClCompile Include="main_wnd.cc" />
     <ClCompile Include="peer_connection_client.cc" />
+    <ClCompile Include="websocketAgent.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
