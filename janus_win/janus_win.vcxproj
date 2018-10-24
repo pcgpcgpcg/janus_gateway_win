@@ -84,13 +84,13 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\third_party\webrtc;..\third_party\webrtc\third_party;..\third_party\webrtc\third_party\abseil-cpp;..\third_party\webrtc\third_party\libyuv\include;..\third_party\uwebsockets\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\third_party\webrtc;..\third_party\webrtc\third_party;..\third_party\webrtc\third_party\abseil-cpp;..\third_party\webrtc\third_party\libyuv\include;..\third_party\uwebsockets\include;..\third_party\libuv\include;..\third_party\openssl\include;..\third_party\zlib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WEBRTC_WIN;WIN32_LEAN_AND_MEAN;NOMINMAX;WIN32;WEBRTC_EXTERNAL_JSON;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>json.obj;json_reader.obj;json_value.obj;json_writer.obj;webrtc.lib;uWS.lib;advapi32.lib;comdlg32.lib;dbghelp.lib;dnsapi.lib;gdi32.lib;msimg32.lib;odbc32.lib;odbccp32.lib;oleaut32.lib;psapi.lib;shell32.lib;shlwapi.lib;user32.lib;usp10.lib;uuid.lib;version.lib;wininet.lib;winmm.lib;winspool.lib;ws2_32.lib;delayimp.lib;kernel32.lib;ole32.lib;crypt32.lib;iphlpapi.lib;secur32.lib;dmoguids.lib;wmcodecdspuuid.lib;amstrmid.lib;msdmo.lib;strmiids.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\third_party\webrtc\lib\debug;..\third_party\uwebsockets\lib\x64\debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>json.obj;json_reader.obj;json_value.obj;json_writer.obj;webrtc.lib;uWS.lib;libuv.lib;libeay32.lib;ssleay32.lib;zlibd.lib;advapi32.lib;comdlg32.lib;dbghelp.lib;dnsapi.lib;gdi32.lib;msimg32.lib;odbc32.lib;odbccp32.lib;oleaut32.lib;psapi.lib;shell32.lib;shlwapi.lib;user32.lib;usp10.lib;uuid.lib;version.lib;wininet.lib;winmm.lib;winspool.lib;ws2_32.lib;delayimp.lib;kernel32.lib;ole32.lib;crypt32.lib;iphlpapi.lib;secur32.lib;dmoguids.lib;wmcodecdspuuid.lib;amstrmid.lib;msdmo.lib;strmiids.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\third_party\webrtc\lib\debug;..\third_party\uwebsockets\lib\x64\debug;..\third_party\libuv\x64\debug\lib;..\third_party\openssl\x64\debug\lib;..\third_party\zlib\x64\debug\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -132,7 +132,7 @@
     <ClInclude Include="flagdefs.h" />
     <ClInclude Include="main_wnd.h" />
     <ClInclude Include="peer_connection_client.h" />
-    <ClInclude Include="websocketAgent.h" />
+    <ClInclude Include="peer_connection_wsclient.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="conductor.cc" />
@@ -140,7 +140,7 @@
     <ClCompile Include="main.cc" />
     <ClCompile Include="main_wnd.cc" />
     <ClCompile Include="peer_connection_client.cc" />
-    <ClCompile Include="websocketAgent.cpp" />
+    <ClCompile Include="peer_connection_wsclient.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
