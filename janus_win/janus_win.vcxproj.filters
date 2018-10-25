@@ -33,6 +33,9 @@
     <ClInclude Include="peer_connection_wsclient.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="conductor_ws.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="conductor.cc">
@@ -51,6 +54,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="peer_connection_wsclient.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="conductor_ws.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

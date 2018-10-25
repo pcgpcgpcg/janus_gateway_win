@@ -5,6 +5,8 @@
 #include "rtc_base/nethelpers.h"
 #include "rtc_base/stringutils.h"
 
+#include "rtc_base/json.h"
+
 #ifdef WIN32
 #include "rtc_base/win32socketserver.h"
 #endif
@@ -72,40 +74,66 @@ void PeerConnectionWsClient::RegisterObserver(
 	callback_ = callback;
 }
 
+//uWs init and connnect
 void PeerConnectionWsClient::Connect(const std::string& server,
-	int port,
-	const std::string& client_name) {
-	RTC_DCHECK(!server.empty());
-	RTC_DCHECK(!client_name.empty());
+	const std::string& client_id) {
+	//error handler
+	h.onError([](void *user) {
+		PeerConnectionWsClient* pws = (PeerConnectionWsClient*)user;
+		if (pws->state_ != NOT_CONNECTED) {
+			RTC_LOG(WARNING)
+				<< "The client must not be connected before you can call Connect()";
+			pws->callback_->OnServerConnectionFailure();
+		}
+	});
+	//connection handler
+	h.onConnection([](uWS::WebSocket<uWS::CLIENT> *ws, uWS::HttpRequest req) {
+		//get user data
+		long that_ptr =(long)ws->getUserData();
+		PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
+		if (pws->state_ == NOT_CONNECTED) {
+			RTC_LOG(WARNING) << "Client established a remote connection over non-SSL";
+			pws->state_ == CONNECTED;
 
-	if (state_ != NOT_CONNECTED) {
-		RTC_LOG(WARNING)
-			<< "The client must not be connected before you can call Connect()";
-		callback_->OnServerConnectionFailure();
-		return;
-	}
+	
+			//create session
+			Json::StyledWriter writer;
+			Json::Value jmessage;
 
-	if (server.empty() || client_name.empty()) {
-		callback_->OnServerConnectionFailure();
-		return;
-	}
+			jmessage["janus"] = "create";
+			jmessage["transaction"] = pws->RandomString(12);
+			std::string json_str = writer.write(jmessage).c_str();
+			ws->send(writer.write(jmessage).c_str(), uWS::TEXT);
+		}
+		switch ((long)ws->getUserData()) {
+		case 1:
+			RTC_LOG(WARNING) << "Client established a remote connection over non-SSL";
+			std::cout << "Client established a remote connection over non-SSL" << std::endl;
+			ws->close(1000);
+			break;
+		default:
+			std::cout << "FAILURE: " << ws->getUserData() << " should not connect!" << std::endl;
+			exit(-1);
+		}
+	});
 
-	if (port <= 0)
-		port = kDefaultServerPort;
+	h.onDisconnection([](uWS::WebSocket<uWS::CLIENT> *ws, int code, char *message, size_t length) {
+		RTC_LOG(WARNING) << "Client got disconnected";
+		std::cout << "Client got disconnected with data: " << ws->getUserData() << ", code: " << code << ", message: <" << std::string(message, length) << ">" << std::endl;
+	});
 
-	server_address_.SetIP(server);
-	server_address_.SetPort(port);
-	client_name_ = client_name;
+	h.onMessage([](uWS::WebSocket<uWS::CLIENT> *ws, char *message, size_t length, uWS::OpCode opCode) {
+		PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
+		pws->handleMessages(message,length);
+	});
 
-	if (server_address_.IsUnresolvedIP()) {
-		state_ = RESOLVING;
-		resolver_ = new rtc::AsyncResolver();
-		resolver_->SignalDone.connect(this, &PeerConnectionWsClient::OnResolveResult);
-		resolver_->Start(server_address_);
-	}
-	else {
-		DoConnect();
-	}
+
+	std::map<std::string, std::string> protocol_map;
+	protocol_map.insert(std::pair<std::string, std::string>(std::string("Sec-WebSocket-Protocol"), std::string("janus-protocol")));
+	long this_ptr = (long)this;
+	h.connect("ws://39.106.100.180:8188", (void*)this, protocol_map);
+	h.run();
+	std::cout << "Falling through testConnections" << std::endl;
 }
 
 void PeerConnectionWsClient::OnResolveResult(
@@ -510,41 +538,22 @@ void PeerConnectionWsClient::OnMessage(rtc::Message* msg) {
 	// ignore msg; there is currently only one supported message ("retry")
 	DoConnect();
 }
+std::string PeerConnectionWsClient::RandomString(int len) {
+	std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	std::string randomString = "";
+	srand((int)time(0));
+	for (int i = 0; i < len; i++) {
+		double rand_num=rand() / double(RAND_MAX);
+		int randomPoz = rand() % charSet.length();
+		//long double randomPoz = std::floor(rand_num*(charSet.length));
+		randomString += charSet.substr(randomPoz, 1);
+	}
+	return randomString;
+}
 
-void PeerConnectionWsClient::ConnectToRoom(std::string roomUrl)
-{
-	h.onError([](void *user) {
-		switch ((long)user) {
-		case 1:
-			std::cout << "Client emitted error on what?" << std::endl;
-			break;
-		default:
-			std::cout << "FAILURE: " << user << " should not emit error!" << std::endl;
-			exit(-1);
-		}
-	});
 
-	h.onConnection([](uWS::WebSocket<uWS::CLIENT> *ws, uWS::HttpRequest req) {
-		switch ((long)ws->getUserData()) {
-		case 1:
-			RTC_LOG(WARNING) << "Client established a remote connection over non-SSL";
-			std::cout << "Client established a remote connection over non-SSL" << std::endl;
-			ws->close(1000);
-			break;
-		default:
-			std::cout << "FAILURE: " << ws->getUserData() << " should not connect!" << std::endl;
-			exit(-1);
-		}
-	});
+void PeerConnectionWsClient::handleMessages(char* message, size_t length) {
+	//½âÎöÕâ¸ömessage
 
-	h.onDisconnection([](uWS::WebSocket<uWS::CLIENT> *ws, int code, char *message, size_t length) {
-		RTC_LOG(WARNING) << "Client got disconnected";
-		std::cout << "Client got disconnected with data: " << ws->getUserData() << ", code: " << code << ", message: <" << std::string(message, length) << ">" << std::endl;
-	});
 
-	std::map<std::string, std::string> protocol_map;
-	protocol_map.insert(std::pair<std::string, std::string>(std::string("1"), std::string("janus-protocol")));
-	h.connect("ws://39.106.100.180:8188", (void *)1, protocol_map);
-	h.run();
-	std::cout << "Falling through testConnections" << std::endl;
 }

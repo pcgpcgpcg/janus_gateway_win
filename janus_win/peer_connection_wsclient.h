@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <iostream>
+#include <cmath>
 
 #include "rtc_base/nethelpers.h"
 #include "rtc_base/physicalsocketserver.h"
@@ -48,11 +49,10 @@ public:
 
 	void RegisterObserver(PeerConnectionWsClientObserver* callback);
 
-	void ConnectToRoom(std::string roomUrl);
+	void handleMessages(char* message, size_t length);
 
 	void Connect(const std::string& server,
-		int port,
-		const std::string& client_name);
+		const std::string& client_id);
 
 	bool SendToPeer(int peer_id, const std::string& message);
 	bool SendHangUp(int peer_id);
@@ -119,10 +119,14 @@ protected:
 	std::string notification_data_;
 	std::string client_name_;
 	Peers peers_;
+public:
 	State state_;
 	int my_id_;
 private:
 	uWS::Hub h;
+
+private:
+	std::string RandomString(int len);
 };
 
 

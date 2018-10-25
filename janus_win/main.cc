@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 #include <Windows.h>
-#include "conductor.h"
+#include "conductor_ws.h"
 #include "flagdefs.h"
 #include "main_wnd.h"
 #include "peer_connection_client.h"
@@ -51,9 +51,9 @@ int PASCAL wWinMain(HINSTANCE instance,
   }
 
   rtc::InitializeSSL();
-  PeerConnectionClient client;
-  rtc::scoped_refptr<Conductor> conductor(
-      new rtc::RefCountedObject<Conductor>(&client, &wnd));
+  PeerConnectionWsClient client;
+  rtc::scoped_refptr<ConductorWs> conductor(
+      new rtc::RefCountedObject<ConductorWs>(&client, &wnd));
 
   // Main loop.
   MSG msg;
