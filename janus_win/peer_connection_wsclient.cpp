@@ -554,6 +554,6 @@ std::string PeerConnectionWsClient::RandomString(int len) {
 
 void PeerConnectionWsClient::handleMessages(char* message, size_t length) {
 	//½âÎöÕâ¸ömessage
-
+	callback_->OnMessageFromPeer(0, std::string(message);
 
 }

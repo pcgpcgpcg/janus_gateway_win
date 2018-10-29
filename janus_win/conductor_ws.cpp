@@ -25,6 +25,7 @@ const char kCandidateSdpName[] = "candidate";
 // Names used for a SessionDescription JSON object.
 const char kSessionDescriptionTypeName[] = "type";
 const char kSessionDescriptionSdpName[] = "sdp";
+const char kJanusOptName[] = "janus";
 
 class DummySetSessionDescriptionObserver
 	: public webrtc::SetSessionDescriptionObserver {
@@ -217,9 +218,114 @@ void ConductorWs::OnPeerDisconnected(int id) {
 	}
 }
 
+//because janus self act as an end,so always define peer_id=0
 void ConductorWs::OnMessageFromPeer(int peer_id, const std::string& message) {
-	RTC_DCHECK(peer_id_ == peer_id || peer_id_ == -1);
 	RTC_DCHECK(!message.empty());
+	//parse json here
+	RTC_LOG(INFO) << "Got wsmsg:"<<message;
+	//TODO make sure in right state
+	//parse json
+	Json::Reader reader;
+	Json::Value jmessage;
+	if (!reader.parse(message, jmessage)) {
+		RTC_LOG(WARNING) << "Received unknown message. " << message;
+		return;
+	}
+	std::string janus_str;
+	std::string json_object;
+
+	rtc::GetStringFromJsonObject(jmessage, kSessionDescriptionTypeName,
+		&janus_str);
+	if (!janus_str.empty()) {
+		if (janus_str == "ack") {
+			// Just an ack, we can probably ignore
+			RTC_LOG(INFO) << "Got an ack on session. ";
+		}
+		else if (janus_str == "success") {
+			String transaction = jo.optString("transaction");
+			JanusTransaction jt = transactions.get(transaction);
+			if (jt.success != null) {
+				jt.success.success(jo);
+			}
+			transactions.remove(transaction);
+		}
+	}
+
+	try {
+		JSONObject jo = new JSONObject(msg);
+		String janus = jo.optString("janus");
+		if (janus.equals("keepalive")) {
+			// Nothing happened
+			Log.i(TAG, "Got a keepalive on session " + sessionId);
+			return;
+		}
+		else if (janus.equals("ack")) {
+			// Just an ack, we can probably ignore
+			Log.i(TAG, "Got an ack on session " + sessionId);
+		}
+		else if (janus.equals("success")) {
+			String transaction = jo.optString("transaction");
+			JanusTransaction jt = transactions.get(transaction);
+			if (jt.success != null) {
+				jt.success.success(jo);
+			}
+			transactions.remove(transaction);
+		}
+		else if (janus.equals("trickle")) {
+			// We got a trickle candidate from Janus
+		}
+		else if (janus.equals("webrtcup")) {
+			// The PeerConnection with the gateway is up! Notify this
+			Log.d(TAG, "Got a webrtcup event on session " + sessionId);
+		}
+		else if (janus.equals("hangup")) {
+			// A plugin asked the core to hangup a PeerConnection on one of our handles
+			Log.d(TAG, "Got a hangup event on session " + sessionId);
+		}
+		else if (janus.equals("detached")) {
+			// A plugin asked the core to detach one of our handles
+			Log.d(TAG, "Got a detached event on session " + sessionId);
+		}
+		else if (janus.equals("media")) {
+			// Media started/stopped flowing
+			Log.d(TAG, "Got a media event on session " + sessionId);
+		}
+		else if (janus.equals("slowlink")) {
+			Log.d(TAG, "Got a slowlink event on session " + sessionId);
+		}
+		else if (janus.equals("error")) {
+			// Oops, something wrong happened
+			String transaction = jo.optString("transaction");
+			JanusTransaction jt = transactions.get(transaction);
+			if (jt.error != null) {
+				jt.error.error(jo);
+			}
+			transactions.remove(transaction);
+		}
+		else {
+			JanusHandle handle = handles.get(new BigInteger(jo.optString("sender")));
+			if (handle == null) {
+				Log.e(TAG, "missing handle");
+			}
+			else if (janus.equals("event")) {
+				Log.d(TAG, "Got a plugin event on session " + sessionId);
+
+				String transaction = jo.optString("transaction");
+				if (transaction == null || transaction.isEmpty()) {
+					return;
+				}
+				JanusTransaction jt = transactions.get(transaction);
+				if (jt != null) {
+					if (jt.event != null) {
+						jt.event.event(jo);
+					}
+				}
+			}
+		}
+	}
+	catch (JSONException e) {
+		reportError("WebSocket message JSON parsing error: " + e.toString());
+	}
 
 	if (!peer_connection_.get()) {
 		RTC_DCHECK(peer_id_ == -1);
@@ -512,6 +618,7 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 	}
 }
 
+//override CreateSessionDescriptionObserver::OnSuccess
 void ConductorWs::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
 	peer_connection_->SetLocalDescription(
 		DummySetSessionDescriptionObserver::Create(), desc);

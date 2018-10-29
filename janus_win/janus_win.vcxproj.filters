@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="janus">
+      <UniqueIdentifier>{dab2e000-5c9e-441b-82e1-e4b6a5a85956}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="conductor.h">
@@ -36,6 +39,12 @@
     <ClInclude Include="conductor_ws.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="JanusHandle.h">
+      <Filter>janus</Filter>
+    </ClInclude>
+    <ClInclude Include="JanusTransaction.h">
+      <Filter>janus</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="conductor.cc">
@@ -58,6 +67,12 @@
     </ClCompile>
     <ClCompile Include="conductor_ws.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="JanusHandle.cpp">
+      <Filter>janus</Filter>
+    </ClCompile>
+    <ClCompile Include="JanusTransaction.cpp">
+      <Filter>janus</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
