@@ -1,22 +1,19 @@
 #pragma once
 #include <string>
-
-class TransactionEvents {
-	virtual void success(int id) = 0;
-	virtual void success(int id, std::string jsep) = 0;
-	virtual void error(std::string reason, std::string code) = 0;
-};
+#include <functional>
+using namespace sigslot;
 
 class JanusTransaction
 {
-
-
 public:
 	JanusTransaction();
 	~JanusTransaction();
 
 public:
 	std::string transactionId;
-	//TransactionEvents events;
+	std::function<void(int)> Success;
+	std::function<void(int,std::string)> Success2;
+	std::function<void(std::string, std::string)> Error;//error code and error desc
+	std::function<void(std::string)> Event;//event with json message as param
 };
 

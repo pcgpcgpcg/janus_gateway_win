@@ -59,3 +59,16 @@ std::string GetPeerName() {
   }
   return ret;
 }
+
+std::string RandomString(int len) {
+	std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	std::string randomString = "";
+	srand((int)time(0));
+	for (int i = 0; i < len; i++) {
+		double rand_num = rand() / double(RAND_MAX);
+		int randomPoz = rand() % charSet.length();
+		//long double randomPoz = std::floor(rand_num*(charSet.length));
+		randomString += charSet.substr(randomPoz, 1);
+	}
+	return randomString;
+}

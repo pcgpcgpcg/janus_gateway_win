@@ -272,7 +272,7 @@ void PeerConnectionWsClient::OnMessageFromPeer(int peer_id,
 		callback_->OnPeerDisconnected(peer_id);
 	}
 	else {
-		callback_->OnMessageFromPeer(peer_id, message);
+		callback_->OnMessageFromJanus(peer_id, message);
 	}
 }
 
@@ -538,22 +538,11 @@ void PeerConnectionWsClient::OnMessage(rtc::Message* msg) {
 	// ignore msg; there is currently only one supported message ("retry")
 	DoConnect();
 }
-std::string PeerConnectionWsClient::RandomString(int len) {
-	std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-	std::string randomString = "";
-	srand((int)time(0));
-	for (int i = 0; i < len; i++) {
-		double rand_num=rand() / double(RAND_MAX);
-		int randomPoz = rand() % charSet.length();
-		//long double randomPoz = std::floor(rand_num*(charSet.length));
-		randomString += charSet.substr(randomPoz, 1);
-	}
-	return randomString;
-}
+
 
 
 void PeerConnectionWsClient::handleMessages(char* message, size_t length) {
 	//½âÎöÕâ¸ömessage
-	callback_->OnMessageFromPeer(0, std::string(message);
+	callback_->OnMessageFromJanus(0, std::string(message));
 
 }

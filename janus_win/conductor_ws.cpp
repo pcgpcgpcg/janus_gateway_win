@@ -219,7 +219,7 @@ void ConductorWs::OnPeerDisconnected(int id) {
 }
 
 //because janus self act as an end,so always define peer_id=0
-void ConductorWs::OnMessageFromPeer(int peer_id, const std::string& message) {
+void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 	RTC_DCHECK(!message.empty());
 	//parse json here
 	RTC_LOG(INFO) << "Got wsmsg:"<<message;
@@ -242,89 +242,59 @@ void ConductorWs::OnMessageFromPeer(int peer_id, const std::string& message) {
 			RTC_LOG(INFO) << "Got an ack on session. ";
 		}
 		else if (janus_str == "success") {
-			String transaction = jo.optString("transaction");
-			JanusTransaction jt = transactions.get(transaction);
-			if (jt.success != null) {
-				jt.success.success(jo);
+			rtc::GetStringFromJsonObject(jmessage, "transaction",
+				&janus_str);
+			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
+			//call signal
+			if (jt) {
+				jt->Success(0);//handle_id not ready yet
 			}
-			transactions.remove(transaction);
+			m_transactionMap.erase(janus_str);
 		}
-	}
-
-	try {
-		JSONObject jo = new JSONObject(msg);
-		String janus = jo.optString("janus");
-		if (janus.equals("keepalive")) {
-			// Nothing happened
-			Log.i(TAG, "Got a keepalive on session " + sessionId);
-			return;
+		else if (janus_str=="trickle") {
+			RTC_LOG(INFO) << "Got a trickle candidate from Janus. ";
 		}
-		else if (janus.equals("ack")) {
-			// Just an ack, we can probably ignore
-			Log.i(TAG, "Got an ack on session " + sessionId);
+		else if (janus_str == "webrtcup") {
+			RTC_LOG(INFO) << "The PeerConnection with the gateway is up!";
 		}
-		else if (janus.equals("success")) {
-			String transaction = jo.optString("transaction");
-			JanusTransaction jt = transactions.get(transaction);
-			if (jt.success != null) {
-				jt.success.success(jo);
-			}
-			transactions.remove(transaction);
+		else if (janus_str == "hangup") {
+			RTC_LOG(INFO) << "A plugin asked the core to hangup a PeerConnection on one of our handles! ";
 		}
-		else if (janus.equals("trickle")) {
-			// We got a trickle candidate from Janus
+		else if (janus_str == "detached") {
+			RTC_LOG(INFO) << "A plugin asked the core to detach one of our handles! ";
 		}
-		else if (janus.equals("webrtcup")) {
-			// The PeerConnection with the gateway is up! Notify this
-			Log.d(TAG, "Got a webrtcup event on session " + sessionId);
+		else if (janus_str == "media") {
+			RTC_LOG(INFO) << "Media started/stopped flowing. ";
 		}
-		else if (janus.equals("hangup")) {
-			// A plugin asked the core to hangup a PeerConnection on one of our handles
-			Log.d(TAG, "Got a hangup event on session " + sessionId);
+		else if (janus_str == "slowlink") {
+			RTC_LOG(INFO) << "Got a slowlink event! ";
 		}
-		else if (janus.equals("detached")) {
-			// A plugin asked the core to detach one of our handles
-			Log.d(TAG, "Got a detached event on session " + sessionId);
-		}
-		else if (janus.equals("media")) {
-			// Media started/stopped flowing
-			Log.d(TAG, "Got a media event on session " + sessionId);
-		}
-		else if (janus.equals("slowlink")) {
-			Log.d(TAG, "Got a slowlink event on session " + sessionId);
-		}
-		else if (janus.equals("error")) {
+		else if (janus_str == "error") {
+			RTC_LOG(INFO) << "Got an error. ";
 			// Oops, something wrong happened
-			String transaction = jo.optString("transaction");
-			JanusTransaction jt = transactions.get(transaction);
-			if (jt.error != null) {
-				jt.error.error(jo);
+			rtc::GetStringFromJsonObject(jmessage, "transaction",
+				&janus_str);
+			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
+			//call signal
+			if (jt) {
+				jt->Error("123","456");//TODO need to parse the error code and desc
 			}
-			transactions.remove(transaction);
+			m_transactionMap.erase(janus_str);
 		}
 		else {
-			JanusHandle handle = handles.get(new BigInteger(jo.optString("sender")));
-			if (handle == null) {
-				Log.e(TAG, "missing handle");
-			}
-			else if (janus.equals("event")) {
-				Log.d(TAG, "Got a plugin event on session " + sessionId);
 
-				String transaction = jo.optString("transaction");
-				if (transaction == null || transaction.isEmpty()) {
-					return;
+			if (janus_str == "event") {
+				RTC_LOG(INFO) << "Got a plugin event! ";
+
+				rtc::GetStringFromJsonObject(jmessage, "transaction",
+					&janus_str);
+				std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
+				if (jt) {
+					jt->Event(message);
 				}
-				JanusTransaction jt = transactions.get(transaction);
-				if (jt != null) {
-					if (jt.event != null) {
-						jt.event.event(jo);
-					}
-				}
+
 			}
 		}
-	}
-	catch (JSONException e) {
-		reportError("WebSocket message JSON parsing error: " + e.toString());
 	}
 
 	if (!peer_connection_.get()) {
@@ -652,5 +622,49 @@ void ConductorWs::OnFailure(webrtc::RTCError error) {
 void ConductorWs::SendMessage(const std::string& json_object) {
 	std::string* msg = new std::string(json_object);
 	main_wnd_->QueueUIThreadCallback(SEND_MESSAGE_TO_PEER, msg);
+}
+
+void ConductorWs::CreateSession() {
+	std::string transactionID=RandomString(12);
+	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
+	jt->transactionId = transactionID;
+
+	//TODO Is it possible for lamda expression here?
+	jt->Success = [](int handle_id) {
+		sessionId = new BigInteger(jo.optJSONObject("data").optString("id"));
+		handler.post(fireKeepAlive);
+		publisherCreateHandle();
+	}
+	jt.success = new JanusTransaction.TransactionCallbackSuccess() {
+		@Override
+			public void success(JSONObject jo) {
+			sessionId = new BigInteger(jo.optJSONObject("data").optString("id"));
+			handler.post(fireKeepAlive);
+			publisherCreateHandle();
+		}
+	};
+	jt.error = new JanusTransaction.TransactionCallbackError() {
+		@Override
+			public void error(JSONObject jo) {
+			String code = jo.optJSONObject("error").optString("code");
+			String reason = jo.optJSONObject("error").optString("reason");
+			Log.e(TAG, "Ooops: " + code + " " + reason);
+			//callbacks.error(json["error"].reason);// FIXME
+		}
+	};
+	transactions.put(transactionID, jt);
+	JSONObject msg = new JSONObject();
+	try {
+		msg.putOpt("janus", "create");
+		msg.putOpt("transaction", transactionID);
+	}
+	catch (JSONException e) {
+		Log.e(TAG, "WebSocket message JSON parsing error: " + e.toString());
+	}
+	wsClient.send(msg.toString());
+}
+
+void ConductorWs::CreateHandle() {
+
 }
 

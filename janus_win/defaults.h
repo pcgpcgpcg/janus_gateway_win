@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #include <string>
+#include <time.h>
 
 extern const char kAudioLabel[];
 extern const char kVideoLabel[];
@@ -25,5 +26,6 @@ std::string GetEnvVarOrDefault(const char* env_var_name,
 std::string GetPeerConnectionString();
 std::string GetDefaultServerName();
 std::string GetPeerName();
+std::string RandomString(int len);
 
 #endif  // EXAMPLES_PEERCONNECTION_CLIENT_DEFAULTS_H_

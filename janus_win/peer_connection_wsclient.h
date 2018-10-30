@@ -20,7 +20,7 @@ struct PeerConnectionWsClientObserver {
 	virtual void OnDisconnected() = 0;
 	virtual void OnPeerConnected(int id, const std::string& name) = 0;
 	virtual void OnPeerDisconnected(int peer_id) = 0;
-	virtual void OnMessageFromPeer(int peer_id, const std::string& message) = 0;
+	virtual void OnMessageFromJanus(int peer_id, const std::string& message) = 0;
 	virtual void OnMessageSent(int err) = 0;
 	virtual void OnServerConnectionFailure() = 0;
 

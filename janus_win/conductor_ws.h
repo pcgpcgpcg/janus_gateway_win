@@ -10,6 +10,9 @@
 #include "api/peerconnectioninterface.h"
 #include "main_wnd.h"
 #include "peer_connection_wsclient.h"
+#include "JanusTransaction.h"
+
+#include "defaults.h"
 
 namespace webrtc {
 	class VideoCaptureModule;
@@ -19,7 +22,8 @@ namespace cricket {
 	class VideoRenderer;
 }  // namespace cricket
 
-class ConductorWs : public webrtc::PeerConnectionObserver,
+class ConductorWs : public sigslot::has_slots<>,
+	public webrtc::PeerConnectionObserver,
 	public webrtc::CreateSessionDescriptionObserver,
 	public PeerConnectionWsClientObserver,
 	public MainWndCallback {
@@ -82,7 +86,7 @@ protected:
 
 	void OnPeerDisconnected(int id) override;
 
-	void OnMessageFromPeer(int peer_id, const std::string& message) override;
+	void OnMessageFromJanus(int peer_id, const std::string& message) override;
 
 	void OnMessageSent(int err) override;
 
@@ -119,6 +123,11 @@ protected:
 	MainWindow* main_wnd_;
 	std::deque<std::string*> pending_messages_;
 	std::string server_;
+	std::map<std::string, std::shared_ptr<JanusTransaction>> m_transactionMap;
+
+	private:
+		void CreateSession();
+		void CreateHandle();
 };
 
 
