@@ -124,6 +124,7 @@ protected:
 	std::deque<std::string*> pending_messages_;
 	std::string server_;
 	std::map<std::string, std::shared_ptr<JanusTransaction>> m_transactionMap;
+	int m_SessionId;
 
 	private:
 		void CreateSession();

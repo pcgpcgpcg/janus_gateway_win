@@ -122,11 +122,10 @@ protected:
 public:
 	State state_;
 	int my_id_;
-private:
 	uWS::Hub h;
-
-private:
-	std::string RandomString(int len);
+	uWS::WebSocket<uWS::CLIENT> *m_ws;
+public:
+	void SendToJanus(const std::string& message);
 };
 
 

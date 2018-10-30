@@ -551,17 +551,9 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		if (!pending_messages_.empty() && !client_->IsSendingMessage()) {
 			msg = pending_messages_.front();
 			pending_messages_.pop_front();
-
-			if (!client_->SendToPeer(peer_id_, *msg) && peer_id_ != -1) {
-				RTC_LOG(LS_ERROR) << "SendToPeer failed";
-				DisconnectFromServer();
-			}
+			client_->SendToJanus(*msg);
 			delete msg;
 		}
-
-		if (!peer_connection_.get())
-			peer_id_ = -1;
-
 		break;
 	}
 
@@ -630,41 +622,105 @@ void ConductorWs::CreateSession() {
 	jt->transactionId = transactionID;
 
 	//TODO Is it possible for lamda expression here?
-	jt->Success = [](int handle_id) {
-		sessionId = new BigInteger(jo.optJSONObject("data").optString("id"));
-		handler.post(fireKeepAlive);
-		publisherCreateHandle();
-	}
+	jt->Success = [=](int handle_id,std::string message) {
+		//parse json
+		Json::Reader reader;
+		Json::Value jmessage;
+		if (!reader.parse(message, jmessage)) {
+			RTC_LOG(WARNING) << "Received unknown message. " << message;
+			return;
+		}
+		std::string janus_str;
+		std::string json_object;
+		Json::Value janus_value;
+		int sessionId;
+
+		rtc::GetValueFromJsonObject(jmessage, "data",
+			&janus_value);
+		rtc::GetIntFromJsonObject(janus_value, "id",
+			&sessionId);
+		m_SessionId = sessionId;
+		//lauch the timer for keep alive breakheart
+		//Then Create the handle
+		//publisherCreateHandle();
+	};
+
+	jt->Error = [=](std::string code, std::string reason) {
+		RTC_LOG(INFO) << "Ooops: " << code << " " << reason;
+	};
+
+	m_transactionMap[transactionID]=jt;
+
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	jmessage["janus"] = "create";
+	jmessage["transaction"] = transactionID;
+	SendMessage(writer.write(jmessage));
+}
+
+void ConductorWs::CreateHandle() {
+	std::string transactionID = RandomString(12);
+	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
+	jt->transactionId = transactionID;
+	jt->Success = [=](int handle_id, std::string message) {
+		//parse json
+		Json::Reader reader;
+		Json::Value jmessage;
+		if (!reader.parse(message, jmessage)) {
+			RTC_LOG(WARNING) << "Received unknown message. " << message;
+			return;
+		}
+		std::string janus_str;
+		std::string json_object;
+		Json::Value janus_value;
+		int sessionId;
+
+		rtc::GetValueFromJsonObject(jmessage, "data",
+			&janus_value);
+		rtc::GetIntFromJsonObject(janus_value, "id",
+			&sessionId);
+		m_SessionId = sessionId;
+	};
 	jt.success = new JanusTransaction.TransactionCallbackSuccess() {
 		@Override
 			public void success(JSONObject jo) {
-			sessionId = new BigInteger(jo.optJSONObject("data").optString("id"));
-			handler.post(fireKeepAlive);
-			publisherCreateHandle();
+			JanusHandle janusHandle = new JanusHandle();
+			janusHandle.handleId = new BigInteger(jo.optJSONObject("data").optString("id"));
+			janusHandle.onJoined = new JanusHandle.OnJoined() {
+				@Override
+					public void onJoined(JanusHandle jh) {
+					Log.d(TAG, "Wow,joined!handleId=" + jh.handleId);
+					rtcInterfaces.onPublisherJoined(jh.handleId);
+				}
+			};
+			janusHandle.onRemoteJsep = new JanusHandle.OnRemoteJsep() {
+				@Override
+					public void onRemoteJsep(JanusHandle jh, JSONObject jsep) {
+					rtcInterfaces.onPublisherRemoteJsep(jh.handleId, jsep);
+				}
+			};
+			handles.put(janusHandle.handleId, janusHandle);
+			publisherJoinRoom(janusHandle);
 		}
 	};
 	jt.error = new JanusTransaction.TransactionCallbackError() {
 		@Override
 			public void error(JSONObject jo) {
-			String code = jo.optJSONObject("error").optString("code");
-			String reason = jo.optJSONObject("error").optString("reason");
-			Log.e(TAG, "Ooops: " + code + " " + reason);
-			//callbacks.error(json["error"].reason);// FIXME
+			Log.d(TAG, "publisherCreateHandle return error:" + jo.toString());
 		}
 	};
 	transactions.put(transactionID, jt);
 	JSONObject msg = new JSONObject();
 	try {
-		msg.putOpt("janus", "create");
+		msg.putOpt("janus", "attach");
+		msg.putOpt("plugin", "janus.plugin.echotest");
 		msg.putOpt("transaction", transactionID);
+		msg.putOpt("session_id", sessionId);
 	}
 	catch (JSONException e) {
-		Log.e(TAG, "WebSocket message JSON parsing error: " + e.toString());
+		e.printStackTrace();
 	}
+	Log.d(TAG, "C->WSS: " + msg.toString());
 	wsClient.send(msg.toString());
-}
-
-void ConductorWs::CreateHandle() {
-
 }
 

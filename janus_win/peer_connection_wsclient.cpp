@@ -37,7 +37,9 @@ namespace {
 }  // namespace
 
 PeerConnectionWsClient::PeerConnectionWsClient()
-	: callback_(NULL), resolver_(NULL), state_(NOT_CONNECTED), my_id_(-1) {}
+	: callback_(NULL), resolver_(NULL), state_(NOT_CONNECTED), my_id_(-1) {
+	m_ws = NULL;
+}
 
 PeerConnectionWsClient::~PeerConnectionWsClient() {}
 
@@ -91,6 +93,7 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 		//get user data
 		long that_ptr =(long)ws->getUserData();
 		PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
+		pws->m_ws = ws;
 		if (pws->state_ == NOT_CONNECTED) {
 			RTC_LOG(WARNING) << "Client established a remote connection over non-SSL";
 			pws->state_ == CONNECTED;
@@ -539,10 +542,19 @@ void PeerConnectionWsClient::OnMessage(rtc::Message* msg) {
 	DoConnect();
 }
 
+void PeerConnectionWsClient::SendToJanus(const std::string& message) {
+	if (state_ != CONNECTED)
+		return;
+	if (m_ws) {
+		m_ws->send(message.c_str(), uWS::TEXT);
+	}
+
+}
+
+
 
 
 void PeerConnectionWsClient::handleMessages(char* message, size_t length) {
 	//½âÎöÕâ¸ömessage
 	callback_->OnMessageFromJanus(0, std::string(message));
-
 }
