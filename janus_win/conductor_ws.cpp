@@ -622,7 +622,7 @@ void ConductorWs::CreateSession() {
 	jt->transactionId = transactionID;
 
 	//TODO Is it possible for lamda expression here?
-	jt->Success = [=](int handle_id,std::string message) {
+	jt->Success = [=](int handle_id,std::string message) mutable {
 		//parse json
 		Json::Reader reader;
 		Json::Value jmessage;
@@ -681,46 +681,65 @@ void ConductorWs::CreateHandle() {
 			&sessionId);
 		m_SessionId = sessionId;
 	};
-	jt.success = new JanusTransaction.TransactionCallbackSuccess() {
-		@Override
-			public void success(JSONObject jo) {
-			JanusHandle janusHandle = new JanusHandle();
-			janusHandle.handleId = new BigInteger(jo.optJSONObject("data").optString("id"));
-			janusHandle.onJoined = new JanusHandle.OnJoined() {
-				@Override
-					public void onJoined(JanusHandle jh) {
-					Log.d(TAG, "Wow,joined!handleId=" + jh.handleId);
-					rtcInterfaces.onPublisherJoined(jh.handleId);
-				}
-			};
-			janusHandle.onRemoteJsep = new JanusHandle.OnRemoteJsep() {
-				@Override
-					public void onRemoteJsep(JanusHandle jh, JSONObject jsep) {
-					rtcInterfaces.onPublisherRemoteJsep(jh.handleId, jsep);
-				}
-			};
-			handles.put(janusHandle.handleId, janusHandle);
-			publisherJoinRoom(janusHandle);
+
+	jt->Event = [=](std::string message) {
+		
+	};
+
+	jt->Error = [=](std::string, std::string) {
+		RTC_LOG(INFO)<<"CreateHandle error:";
+	};
+
+	m_transactionMap[transactionID] = jt;
+
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	jmessage["janus"] = "attach";
+	jmessage["plugin"] = "janus.plugin.echotest";
+	jmessage["transaction"] = transactionID;
+	jmessage["sessionId"] = m_SessionId;
+	SendMessage(writer.write(jmessage));
+}
+
+void ConductorWs::JoinRoom(long int handleId,long int feedId) {
+	//rtcEvents.onPublisherJoined(handle.handleId);
+	InitializePeerConnection();
+	std::string transactionID = RandomString(12);
+	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
+	jt->transactionId = transactionID;
+
+	jt->Event = [=](std::string message) {
+		//parse json
+		Json::Reader reader;
+		Json::Value jmessage;
+		if (!reader.parse(message, jmessage)) {
+			RTC_LOG(WARNING) << "Received unknown message. " << message;
+			return;
+		}
+		//判断是onjoined还是onRemoteJsep,然后根据对应的handleId进行处理
+		if (onjoined) {
+			rtcInterfaces.onPublisherJoined(jh.handleId);
+		}
+		else if (onRemoteJsep) {
+			//rtcEvents.onPublisherRemoteJsep(handle.handleId, jsep);
+		}
+		else {
+
 		}
 	};
-	jt.error = new JanusTransaction.TransactionCallbackError() {
-		@Override
-			public void error(JSONObject jo) {
-			Log.d(TAG, "publisherCreateHandle return error:" + jo.toString());
-		}
-	};
-	transactions.put(transactionID, jt);
-	JSONObject msg = new JSONObject();
-	try {
-		msg.putOpt("janus", "attach");
-		msg.putOpt("plugin", "janus.plugin.echotest");
-		msg.putOpt("transaction", transactionID);
-		msg.putOpt("session_id", sessionId);
-	}
-	catch (JSONException e) {
-		e.printStackTrace();
-	}
-	Log.d(TAG, "C->WSS: " + msg.toString());
-	wsClient.send(msg.toString());
+
+	m_transactionMap[transactionID] = jt;
+
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	Json::Value jbody;
+	jbody["audio"] = true;
+	jbody["video"] = true;
+	jmessage["body"] = jbody;
+	jmessage["janus"] = "message";
+	jmessage["transaction"] = transactionID;
+	jmessage["sessionId"] = m_SessionId;
+	jmessage["handle_id"] = m_HandleId;
+	SendMessage(writer.write(jmessage));
 }
 
