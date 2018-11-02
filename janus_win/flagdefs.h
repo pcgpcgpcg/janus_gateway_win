@@ -24,7 +24,7 @@ DEFINE_bool(autoconnect,
             false,
             "Connect to the server without user "
             "intervention.");
-DEFINE_string(server, "localhost", "The server to connect to.");
+DEFINE_string(server, "39.106.100.180", "The server to connect to.");
 DEFINE_int(port,
            kDefaultServerPort,
            "The port on which the server is listening.");

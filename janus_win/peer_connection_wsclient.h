@@ -23,6 +23,7 @@ struct PeerConnectionWsClientObserver {
 	virtual void OnMessageFromJanus(int peer_id, const std::string& message) = 0;
 	virtual void OnMessageSent(int err) = 0;
 	virtual void OnServerConnectionFailure() = 0;
+	virtual void OnJanusConnected() = 0;
 
 protected:
 	virtual ~PeerConnectionWsClientObserver() {}
@@ -109,6 +110,7 @@ protected:
 
 	void OnResolveResult(rtc::AsyncResolverInterface* resolver);
 
+public:
 	PeerConnectionWsClientObserver* callback_;
 	rtc::SocketAddress server_address_;
 	rtc::AsyncResolver* resolver_;

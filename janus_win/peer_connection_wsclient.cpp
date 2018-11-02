@@ -91,32 +91,14 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 	//connection handler
 	h.onConnection([](uWS::WebSocket<uWS::CLIENT> *ws, uWS::HttpRequest req) {
 		//get user data
+		int rev_tid = GetCurrentThreadId();
 		long that_ptr =(long)ws->getUserData();
 		PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
 		pws->m_ws = ws;
 		if (pws->state_ == NOT_CONNECTED) {
 			RTC_LOG(WARNING) << "Client established a remote connection over non-SSL";
-			pws->state_ == CONNECTED;
-
-	
-			//create session
-			Json::StyledWriter writer;
-			Json::Value jmessage;
-
-			jmessage["janus"] = "create";
-			jmessage["transaction"] = pws->RandomString(12);
-			std::string json_str = writer.write(jmessage).c_str();
-			ws->send(writer.write(jmessage).c_str(), uWS::TEXT);
-		}
-		switch ((long)ws->getUserData()) {
-		case 1:
-			RTC_LOG(WARNING) << "Client established a remote connection over non-SSL";
-			std::cout << "Client established a remote connection over non-SSL" << std::endl;
-			ws->close(1000);
-			break;
-		default:
-			std::cout << "FAILURE: " << ws->getUserData() << " should not connect!" << std::endl;
-			exit(-1);
+			pws->state_ = CONNECTED;
+			pws->callback_->OnJanusConnected();			
 		}
 	});
 
@@ -134,9 +116,8 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 	std::map<std::string, std::string> protocol_map;
 	protocol_map.insert(std::pair<std::string, std::string>(std::string("Sec-WebSocket-Protocol"), std::string("janus-protocol")));
 	long this_ptr = (long)this;
-	h.connect("ws://39.106.100.180:8188", (void*)this, protocol_map);
+	h.connect(server, (void*)this, protocol_map);
 	h.run();
-	std::cout << "Falling through testConnections" << std::endl;
 }
 
 void PeerConnectionWsClient::OnResolveResult(
@@ -546,6 +527,7 @@ void PeerConnectionWsClient::SendToJanus(const std::string& message) {
 	if (state_ != CONNECTED)
 		return;
 	if (m_ws) {
+		RTC_LOG(INFO) << "send wsmsg:" << message;
 		m_ws->send(message.c_str(), uWS::TEXT);
 	}
 

@@ -92,6 +92,8 @@ protected:
 
 	void OnServerConnectionFailure() override;
 
+	void OnJanusConnected() override;
+
 	//
 	// MainWndCallback implementation.
 	//
@@ -124,8 +126,8 @@ protected:
 	std::deque<std::string*> pending_messages_;
 	std::string server_;
 	std::map<std::string, std::shared_ptr<JanusTransaction>> m_transactionMap;
-	long int m_SessionId;
-	long int m_HandleId;
+	long long int m_SessionId;
+	long long int m_HandleId;
 
 	private:
 		void CreateSession();

@@ -229,6 +229,7 @@ void MainWnd::StopRemoteRenderer() {
 }
 
 void MainWnd::QueueUIThreadCallback(int msg_id, void* data) {
+	int cur_tid=GetCurrentThreadId();
   ::PostThreadMessage(ui_thread_id_, UI_THREAD_CALLBACK,
                       static_cast<WPARAM>(msg_id),
                       reinterpret_cast<LPARAM>(data));

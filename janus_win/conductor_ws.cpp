@@ -234,7 +234,7 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 	std::string janus_str;
 	std::string json_object;
 
-	rtc::GetStringFromJsonObject(jmessage, kSessionDescriptionTypeName,
+	rtc::GetStringFromJsonObject(jmessage, "janus",
 		&janus_str);
 	if (!janus_str.empty()) {
 		if (janus_str == "ack") {
@@ -247,7 +247,7 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
 			//call signal
 			if (jt) {
-				jt->Success(0);//handle_id not ready yet
+				jt->Success(0, message);//handle_id not ready yet
 			}
 			m_transactionMap.erase(janus_str);
 		}
@@ -296,103 +296,6 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 			}
 		}
 	}
-
-	if (!peer_connection_.get()) {
-		RTC_DCHECK(peer_id_ == -1);
-		peer_id_ = peer_id;
-
-		if (!InitializePeerConnection()) {
-			RTC_LOG(LS_ERROR) << "Failed to initialize our PeerConnection instance";
-			client_->SignOut();
-			return;
-		}
-	}
-	else if (peer_id != peer_id_) {
-		RTC_DCHECK(peer_id_ != -1);
-		RTC_LOG(WARNING)
-			<< "Received a message from unknown peer while already in a "
-			"conversation with a different peer.";
-		return;
-	}
-
-	Json::Reader reader;
-	Json::Value jmessage;
-	if (!reader.parse(message, jmessage)) {
-		RTC_LOG(WARNING) << "Received unknown message. " << message;
-		return;
-	}
-	std::string type_str;
-	std::string json_object;
-
-	rtc::GetStringFromJsonObject(jmessage, kSessionDescriptionTypeName,
-		&type_str);
-	if (!type_str.empty()) {
-		if (type_str == "offer-loopback") {
-			// This is a loopback call.
-			// Recreate the peerconnection with DTLS disabled.
-			if (!ReinitializePeerConnectionForLoopback()) {
-				RTC_LOG(LS_ERROR) << "Failed to initialize our PeerConnection instance";
-				DeletePeerConnection();
-				client_->SignOut();
-			}
-			return;
-		}
-		absl::optional<webrtc::SdpType> type_maybe =
-			webrtc::SdpTypeFromString(type_str);
-		if (!type_maybe) {
-			RTC_LOG(LS_ERROR) << "Unknown SDP type: " << type_str;
-			return;
-		}
-		webrtc::SdpType type = *type_maybe;
-		std::string sdp;
-		if (!rtc::GetStringFromJsonObject(jmessage, kSessionDescriptionSdpName,
-			&sdp)) {
-			RTC_LOG(WARNING) << "Can't parse received session description message.";
-			return;
-		}
-		webrtc::SdpParseError error;
-		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-			webrtc::CreateSessionDescription(type, sdp, &error);
-		if (!session_description) {
-			RTC_LOG(WARNING) << "Can't parse received session description message. "
-				<< "SdpParseError was: " << error.description;
-			return;
-		}
-		RTC_LOG(INFO) << " Received session description :" << message;
-		peer_connection_->SetRemoteDescription(
-			DummySetSessionDescriptionObserver::Create(),
-			session_description.release());
-		if (type == webrtc::SdpType::kOffer) {
-			peer_connection_->CreateAnswer(
-				this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
-		}
-	}
-	else {
-		std::string sdp_mid;
-		int sdp_mlineindex = 0;
-		std::string sdp;
-		if (!rtc::GetStringFromJsonObject(jmessage, kCandidateSdpMidName,
-			&sdp_mid) ||
-			!rtc::GetIntFromJsonObject(jmessage, kCandidateSdpMlineIndexName,
-				&sdp_mlineindex) ||
-			!rtc::GetStringFromJsonObject(jmessage, kCandidateSdpName, &sdp)) {
-			RTC_LOG(WARNING) << "Can't parse received message.";
-			return;
-		}
-		webrtc::SdpParseError error;
-		std::unique_ptr<webrtc::IceCandidateInterface> candidate(
-			webrtc::CreateIceCandidate(sdp_mid, sdp_mlineindex, sdp, &error));
-		if (!candidate.get()) {
-			RTC_LOG(WARNING) << "Can't parse received candidate message. "
-				<< "SdpParseError was: " << error.description;
-			return;
-		}
-		if (!peer_connection_->AddIceCandidate(candidate.get())) {
-			RTC_LOG(WARNING) << "Failed to apply the received candidate";
-			return;
-		}
-		RTC_LOG(INFO) << " Received candidate :" << message;
-	}
 }
 
 void ConductorWs::OnMessageSent(int err) {
@@ -413,7 +316,8 @@ void ConductorWs::StartLogin(const std::string& server, int port) {
 	if (client_->is_connected())
 		return;
 	server_ = server;
-	client_->Connect("1234", "1111");
+	auto ws_server = std::string("ws://") + server + std::string(":") + std::to_string(port);
+	client_->Connect(ws_server, "1111");
 }
 
 void ConductorWs::DisconnectFromServer() {
@@ -616,6 +520,10 @@ void ConductorWs::SendMessage(const std::string& json_object) {
 	main_wnd_->QueueUIThreadCallback(SEND_MESSAGE_TO_PEER, msg);
 }
 
+void ConductorWs::OnJanusConnected() {
+	CreateSession();
+}
+
 void ConductorWs::CreateSession() {
 	std::string transactionID=RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
@@ -633,16 +541,17 @@ void ConductorWs::CreateSession() {
 		std::string janus_str;
 		std::string json_object;
 		Json::Value janus_value;
-		int sessionId;
+		Json::Value janus_session_value;
 
 		rtc::GetValueFromJsonObject(jmessage, "data",
 			&janus_value);
-		rtc::GetIntFromJsonObject(janus_value, "id",
-			&sessionId);
-		m_SessionId = sessionId;
+		rtc::GetValueFromJsonObject(janus_value, "id",
+			&janus_session_value);
+		std::string sessionId_str=rtc::JsonValueToString(janus_session_value);
+		m_SessionId = std::stoll(sessionId_str);
 		//lauch the timer for keep alive breakheart
 		//Then Create the handle
-		//publisherCreateHandle();
+		CreateHandle();
 	};
 
 	jt->Error = [=](std::string code, std::string reason) {
@@ -655,7 +564,8 @@ void ConductorWs::CreateSession() {
 	Json::Value jmessage;
 	jmessage["janus"] = "create";
 	jmessage["transaction"] = transactionID;
-	SendMessage(writer.write(jmessage));
+	//SendMessage(writer.write(jmessage));
+	client_->SendToJanus(writer.write(jmessage));
 }
 
 void ConductorWs::CreateHandle() {
@@ -673,13 +583,14 @@ void ConductorWs::CreateHandle() {
 		std::string janus_str;
 		std::string json_object;
 		Json::Value janus_value;
-		int sessionId;
+		Json::Value janus_handle_value;
 
 		rtc::GetValueFromJsonObject(jmessage, "data",
 			&janus_value);
-		rtc::GetIntFromJsonObject(janus_value, "id",
-			&sessionId);
-		m_SessionId = sessionId;
+		rtc::GetValueFromJsonObject(janus_value, "id",
+			&janus_handle_value);
+		std::string handleId_str = rtc::JsonValueToString(janus_handle_value);
+		m_HandleId = std::stoll(handleId_str);
 	};
 
 	jt->Event = [=](std::string message) {
@@ -694,11 +605,13 @@ void ConductorWs::CreateHandle() {
 
 	Json::StyledWriter writer;
 	Json::Value jmessage;
+	Json::Value jdata;
+	jdata["id"]=
 	jmessage["janus"] = "attach";
 	jmessage["plugin"] = "janus.plugin.echotest";
 	jmessage["transaction"] = transactionID;
-	jmessage["sessionId"] = m_SessionId;
-	SendMessage(writer.write(jmessage));
+	jmessage["session_id"] = m_SessionId;
+	client_->SendToJanus(writer.write(jmessage));
 }
 
 void ConductorWs::JoinRoom(long int handleId,long int feedId) {
@@ -717,7 +630,7 @@ void ConductorWs::JoinRoom(long int handleId,long int feedId) {
 			return;
 		}
 		//判断是onjoined还是onRemoteJsep,然后根据对应的handleId进行处理
-		if (onjoined) {
+		/*if (onjoined) {
 			rtcInterfaces.onPublisherJoined(jh.handleId);
 		}
 		else if (onRemoteJsep) {
@@ -725,7 +638,7 @@ void ConductorWs::JoinRoom(long int handleId,long int feedId) {
 		}
 		else {
 
-		}
+		}*/
 	};
 
 	m_transactionMap[transactionID] = jt;

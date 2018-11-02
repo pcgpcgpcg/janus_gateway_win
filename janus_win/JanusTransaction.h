@@ -1,7 +1,6 @@
 #pragma once
 #include <string>
 #include <functional>
-using namespace sigslot;
 
 class JanusTransaction
 {
