@@ -132,7 +132,10 @@ protected:
 	private:
 		void CreateSession();
 		void CreateHandle();
-		void JoinRoom(long int handleId, long int feedId);
+		void JoinRoom(long long int handleId, long long int feedId);
+		void SendOffer(long long int handleId, std::string sdp_type, std::string sdp_desc);
+		void trickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate);
+		void trickleCandidateComplete(long long int handleId);
 };
 
 

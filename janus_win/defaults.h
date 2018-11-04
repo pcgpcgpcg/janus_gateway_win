@@ -14,7 +14,9 @@
 #include <stdint.h>
 
 #include <string>
-#include <time.h>
+#include <random>
+#include <ctime>
+
 
 extern const char kAudioLabel[];
 extern const char kVideoLabel[];

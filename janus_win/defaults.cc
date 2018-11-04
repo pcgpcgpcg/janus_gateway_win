@@ -60,7 +60,25 @@ std::string GetPeerName() {
   return ret;
 }
 
+//c++ 11 random
 std::string RandomString(int len) {
+	std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	std::string randomString = "";
+	std::random_device rd;
+	std::default_random_engine e(rd());
+	std::uniform_int_distribution<unsigned> u(0, charSet.length());
+	srand((int)time(0));
+	for (int i = 0; i < len; i++) {
+		double rand_num = rand() / double(RAND_MAX);
+		int randomPoz = u(e) % charSet.length();
+		//long double randomPoz = std::floor(rand_num*(charSet.length));
+		randomString += charSet.substr(randomPoz, 1);
+	}
+	return randomString;
+}
+
+//old c style rand
+std::string RandomString2(int len) {
 	std::string charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 	std::string randomString = "";
 	srand((int)time(0));

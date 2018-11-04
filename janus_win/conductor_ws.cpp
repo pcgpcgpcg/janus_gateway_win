@@ -222,7 +222,7 @@ void ConductorWs::OnPeerDisconnected(int id) {
 void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 	RTC_DCHECK(!message.empty());
 	//parse json here
-	RTC_LOG(INFO) << "Got wsmsg:"<<message;
+	std::cout << "Got wsmsg:"<<message;
 	//TODO make sure in right state
 	//parse json
 	Json::Reader reader;
@@ -491,17 +491,9 @@ void ConductorWs::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
 
 	std::string sdp;
 	desc->ToString(&sdp);
+	SendOffer(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
 
-	// For loopback test. To save some connecting delay.
-	if (loopback_) {
-		// Replace message type from "offer" to "answer"
-		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, sdp);
-		peer_connection_->SetRemoteDescription(
-			DummySetSessionDescriptionObserver::Create(),
-			session_description.release());
-		return;
-	}
+	
 
 	Json::StyledWriter writer;
 	Json::Value jmessage;
@@ -591,6 +583,8 @@ void ConductorWs::CreateHandle() {
 			&janus_handle_value);
 		std::string handleId_str = rtc::JsonValueToString(janus_handle_value);
 		m_HandleId = std::stoll(handleId_str);
+
+		JoinRoom(m_HandleId, 0);//TODO feedid means nothing in echotest,else?
 	};
 
 	jt->Event = [=](std::string message) {
@@ -614,9 +608,8 @@ void ConductorWs::CreateHandle() {
 	client_->SendToJanus(writer.write(jmessage));
 }
 
-void ConductorWs::JoinRoom(long int handleId,long int feedId) {
+void ConductorWs::JoinRoom(long long int handleId,long long int feedId) {
 	//rtcEvents.onPublisherJoined(handle.handleId);
-	InitializePeerConnection();
 	std::string transactionID = RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
@@ -628,6 +621,18 @@ void ConductorWs::JoinRoom(long int handleId,long int feedId) {
 		if (!reader.parse(message, jmessage)) {
 			RTC_LOG(WARNING) << "Received unknown message. " << message;
 			return;
+		}
+		std::string janus_str;
+		std::string json_object;
+		Json::Value janus_value;
+		std::string nego_result;
+
+		rtc::GetValueFromJsonObject(jmessage, "data",
+			&janus_value);
+		rtc::GetStringFromJsonObject(janus_value, "result",
+			&nego_result);
+		if (nego_result != "ok") {
+			RTC_LOG(WARNING) << "negotiation failed! ";
 		}
 		//判断是onjoined还是onRemoteJsep,然后根据对应的handleId进行处理
 		/*if (onjoined) {
@@ -651,8 +656,100 @@ void ConductorWs::JoinRoom(long int handleId,long int feedId) {
 	jmessage["body"] = jbody;
 	jmessage["janus"] = "message";
 	jmessage["transaction"] = transactionID;
-	jmessage["sessionId"] = m_SessionId;
+	jmessage["session_id"] = m_SessionId;
 	jmessage["handle_id"] = m_HandleId;
-	SendMessage(writer.write(jmessage));
+	client_->SendToJanus(writer.write(jmessage));
+	if (InitializePeerConnection()) {
+		peer_connection_->CreateOffer(
+			this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+	}
+	else {
+		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
+	}
 }
+
+void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::string sdp_desc) {
+	std::string transactionID = RandomString(12);
+	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
+	jt->transactionId = transactionID;
+
+	jt->Event = [=](std::string message) {
+		//parse json
+		Json::Reader reader;
+		Json::Value jmessage;
+		if (!reader.parse(message, jmessage)) {
+			RTC_LOG(WARNING) << "Received unknown message. " << message;
+			return;
+		}
+		std::string janus_str;
+		std::string json_object;
+		Json::Value janus_value;
+		std::string jsep_str;
+		//see if has remote jsep
+		rtc::GetValueFromJsonObject(janus_value, "jsep",
+			&janus_value);
+		if (janus_value!=NULL) {
+			//should set remote sdp
+			std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+				webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, rtc::JsonValueToString(janus_value));
+			peer_connection_->SetRemoteDescription(
+				DummySetSessionDescriptionObserver::Create(),
+				session_description.release());
+		}	
+	};
+
+	m_transactionMap[transactionID] = jt;
+
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	Json::Value jbody;
+	Json::Value jjsep;
+
+	jbody["request"] = "configure";
+	jbody["audio"] = true;
+	jbody["video"] = true;
+
+	jjsep["type"] = sdp_type;
+	jjsep["sdp"] = sdp_desc;
+
+	jmessage["body"] = jbody;
+	jmessage["jsep"] = jjsep;
+	jmessage["janus"] = "message";
+	jmessage["transaction"] = transactionID;
+	jmessage["session_id"] = m_SessionId;
+	jmessage["handle_id"] = m_HandleId;
+	client_->SendToJanus(writer.write(jmessage));
+}
+
+void ConductorWs::trickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate) {
+	std::string transactionID = RandomString(12);
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	Json::Value jcandidate;
+
+	std::string sdp;
+	if (!candidate->ToString(&sdp)) {
+		RTC_LOG(LS_ERROR) << "Failed to serialize candidate";
+		return;
+	}
+
+	jcandidate["sdpMid"]= candidate->sdp_mid();
+	jcandidate["sdpMLineIndex"] = candidate->sdp_mline_index();
+	jcandidate["sdpMid"] = sdp;
+
+	jmessage["janus"] = "message";
+	jmessage["candidate"] = jcandidate;	
+	jmessage["transaction"] = transactionID;
+	jmessage["session_id"] = m_SessionId;
+	jmessage["handle_id"] = m_HandleId;
+	client_->SendToJanus(writer.write(jmessage));
+}
+
+void ConductorWs::trickleCandidateComplete(long long int handleId) {
+
+}
+
+//we have arrived at OnLocalStream and OnRemoteSteam
+//thread problem should fix when debug
+
 
