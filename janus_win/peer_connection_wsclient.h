@@ -55,60 +55,8 @@ public:
 	void Connect(const std::string& server,
 		const std::string& client_id);
 
-	bool SendToPeer(int peer_id, const std::string& message);
-	bool SendHangUp(int peer_id);
-	bool IsSendingMessage();
-
-	bool SignOut();
-
 	// implements the MessageHandler interface
 	void OnMessage(rtc::Message* msg);
-
-protected:
-	void DoConnect();
-	void Close();
-	void InitSocketSignals();
-	bool ConnectControlSocket();
-	void OnConnect(rtc::AsyncSocket* socket);
-	void OnHangingGetConnect(rtc::AsyncSocket* socket);
-	void OnMessageFromPeer(int peer_id, const std::string& message);
-
-	// Quick and dirty support for parsing HTTP header values.
-	bool GetHeaderValue(const std::string& data,
-		size_t eoh,
-		const char* header_pattern,
-		size_t* value);
-
-	bool GetHeaderValue(const std::string& data,
-		size_t eoh,
-		const char* header_pattern,
-		std::string* value);
-
-	// Returns true if the whole response has been read.
-	bool ReadIntoBuffer(rtc::AsyncSocket* socket,
-		std::string* data,
-		size_t* content_length);
-
-	void OnRead(rtc::AsyncSocket* socket);
-
-	void OnHangingGetRead(rtc::AsyncSocket* socket);
-
-	// Parses a single line entry in the form "<name>,<id>,<connected>"
-	bool ParseEntry(const std::string& entry,
-		std::string* name,
-		int* id,
-		bool* connected);
-
-	int GetResponseStatus(const std::string& response);
-
-	bool ParseServerResponse(const std::string& response,
-		size_t content_length,
-		size_t* peer_id,
-		size_t* eoh);
-
-	void OnClose(rtc::AsyncSocket* socket, int err);
-
-	void OnResolveResult(rtc::AsyncResolverInterface* resolver);
 
 public:
 	PeerConnectionWsClientObserver* callback_;

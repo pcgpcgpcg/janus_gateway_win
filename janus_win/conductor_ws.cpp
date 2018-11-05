@@ -55,7 +55,6 @@ bool ConductorWs::connection_active() const {
 }
 
 void ConductorWs::Close() {
-	client_->SignOut();
 	DeletePeerConnection();
 }
 
@@ -208,8 +207,7 @@ void ConductorWs::OnPeerDisconnected(int id) {
 //because janus self act as an end,so always define peer_id=0
 void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 	RTC_DCHECK(!message.empty());
-	//parse json here
-	std::cout << "Got wsmsg:"<<message;
+	RTC_LOG(INFO) << "got msg: " << message;
 	//TODO make sure in right state
 	//parse json
 	Json::Reader reader;
@@ -308,8 +306,7 @@ void ConductorWs::StartLogin(const std::string& server, int port) {
 }
 
 void ConductorWs::DisconnectFromServer() {
-	if (client_->is_connected())
-		client_->SignOut();
+	
 }
 
 void ConductorWs::ConnectToPeer(int peer_id) {
@@ -402,7 +399,6 @@ void ConductorWs::AddTracks() {
 void ConductorWs::DisconnectFromCurrentPeer() {
 	RTC_LOG(INFO) << __FUNCTION__;
 	if (peer_connection_.get()) {
-		client_->SendHangUp(peer_id_);
 		DeletePeerConnection();
 	}
 
@@ -439,7 +435,7 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 			pending_messages_.push_back(msg);
 		}
 
-		if (!pending_messages_.empty() && !client_->IsSendingMessage()) {
+		if (!pending_messages_.empty()) {
 			msg = pending_messages_.front();
 			pending_messages_.pop_front();
 			client_->SendToJanus(*msg);
