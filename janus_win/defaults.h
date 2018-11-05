@@ -17,6 +17,8 @@
 #include <random>
 #include <ctime>
 
+#define JANUS_MODE 1 
+
 
 extern const char kAudioLabel[];
 extern const char kVideoLabel[];

@@ -136,6 +136,8 @@ protected:
 		void SendOffer(long long int handleId, std::string sdp_type, std::string sdp_desc);
 		void trickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate);
 		void trickleCandidateComplete(long long int handleId);
+		public:
+			void* this_ptr;
 };
 
 

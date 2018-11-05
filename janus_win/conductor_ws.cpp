@@ -302,6 +302,14 @@ void ConductorWs::StartLogin(const std::string& server, int port) {
 		return;
 	server_ = server;
 	auto ws_server = std::string("ws://") + server + std::string(":") + std::to_string(port);
+
+	/*if (InitializePeerConnection()) {
+		peer_connection_->CreateOffer(
+			this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+	}
+	else {
+		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
+	}*/
 	client_->Connect(ws_server, "1111");
 }
 
@@ -500,6 +508,7 @@ void ConductorWs::OnJanusConnected() {
 }
 
 void ConductorWs::CreateSession() {
+	
 	std::string transactionID=RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
@@ -620,16 +629,6 @@ void ConductorWs::JoinRoom(long long int handleId,long long int feedId) {
 		if (nego_result != "ok") {
 			RTC_LOG(WARNING) << "negotiation failed! ";
 		}
-		//判断是onjoined还是onRemoteJsep,然后根据对应的handleId进行处理
-		/*if (onjoined) {
-			rtcInterfaces.onPublisherJoined(jh.handleId);
-		}
-		else if (onRemoteJsep) {
-			//rtcEvents.onPublisherRemoteJsep(handle.handleId, jsep);
-		}
-		else {
-
-		}*/
 	};
 
 	m_transactionMap[transactionID] = jt;
@@ -652,6 +651,7 @@ void ConductorWs::JoinRoom(long long int handleId,long long int feedId) {
 	else {
 		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
 	}
+	
 }
 
 void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::string sdp_desc) {

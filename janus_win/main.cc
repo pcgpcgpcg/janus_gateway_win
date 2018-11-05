@@ -8,14 +8,18 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 #include <Windows.h>
+#include "conductor.h"
 #include "conductor_ws.h"
 #include "flagdefs.h"
 #include "main_wnd.h"
 #include "peer_connection_client.h"
+#include "peer_connection_wsclient.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/ssladapter.h"
 #include "rtc_base/win32socketinit.h"
 #include "rtc_base/win32socketserver.h"
+
+#include "defaults.h"
 
 int PASCAL wWinMain(HINSTANCE instance,
                     HINSTANCE prev_instance,
@@ -51,9 +55,16 @@ int PASCAL wWinMain(HINSTANCE instance,
   }
 
   rtc::InitializeSSL();
+#if(JANUS_MODE)
   PeerConnectionWsClient client;
   rtc::scoped_refptr<ConductorWs> conductor(
-      new rtc::RefCountedObject<ConductorWs>(&client, &wnd));
+	  new rtc::RefCountedObject<ConductorWs>(&client, &wnd));
+#else
+  PeerConnectionClient client;
+  rtc::scoped_refptr<Conductor> conductor(
+	  new rtc::RefCountedObject<Conductor>(&client, &wnd));
+#endif
+ 
 
   // Main loop.
   MSG msg;
