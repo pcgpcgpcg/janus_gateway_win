@@ -158,26 +158,13 @@ void ConductorWs::OnRemoveTrack(
 
 void ConductorWs::OnIceCandidate(const webrtc::IceCandidateInterface* candidate) {
 	RTC_LOG(INFO) << __FUNCTION__ << " " << candidate->sdp_mline_index();
-	// For loopback test. To save some connecting delay.
-	if (loopback_) {
-		if (!peer_connection_->AddIceCandidate(candidate)) {
-			RTC_LOG(WARNING) << "Failed to apply the received candidate";
-		}
-		return;
-	}
 
-	Json::StyledWriter writer;
-	Json::Value jmessage;
-
-	jmessage[kCandidateSdpMidName] = candidate->sdp_mid();
-	jmessage[kCandidateSdpMlineIndexName] = candidate->sdp_mline_index();
-	std::string sdp;
-	if (!candidate->ToString(&sdp)) {
-		RTC_LOG(LS_ERROR) << "Failed to serialize candidate";
-		return;
+	if (candidate) {
+		trickleCandidate(0, candidate);
 	}
-	jmessage[kCandidateSdpName] = sdp;
-	SendMessage(writer.write(jmessage));
+	else {
+		trickleCandidateComplete(0);
+	}
 }
 
 //
@@ -625,9 +612,12 @@ void ConductorWs::JoinRoom(long long int handleId,long long int feedId) {
 		std::string janus_str;
 		std::string json_object;
 		Json::Value janus_value;
+		Json::Value janus_plugin;
 		std::string nego_result;
 
-		rtc::GetValueFromJsonObject(jmessage, "data",
+		rtc::GetValueFromJsonObject(jmessage, "plugindata",
+			&janus_plugin);
+		rtc::GetValueFromJsonObject(janus_plugin, "data",
 			&janus_value);
 		rtc::GetStringFromJsonObject(janus_value, "result",
 			&nego_result);
@@ -746,7 +736,19 @@ void ConductorWs::trickleCandidate(long long int handleId, const webrtc::IceCand
 }
 
 void ConductorWs::trickleCandidateComplete(long long int handleId) {
+	std::string transactionID = RandomString(12);
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	Json::Value jcandidate;
 
+	jcandidate["completed"] = true;
+
+	jmessage["janus"] = "trickle";
+	jmessage["candidate"] = jcandidate;
+	jmessage["transaction"] = transactionID;
+	jmessage["session_id"] = m_SessionId;
+	jmessage["handle_id"] = m_HandleId;
+	client_->SendToJanus(writer.write(jmessage));
 }
 
 //we have arrived at OnLocalStream and OnRemoteSteam
