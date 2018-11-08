@@ -69,13 +69,17 @@ public:
 	std::string notification_data_;
 	std::string client_name_;
 	Peers peers_;
+	std::thread ws_thread;
+	uWS::Hub m_hub;
+	uWS::WebSocket<uWS::CLIENT> *m_ws = nullptr;
+	uS::Async *m_async;
+	std::string m_msg_to_send;
 public:
 	State state_;
 	int my_id_;
-	uWS::Hub h;
-	uWS::WebSocket<uWS::CLIENT> *m_ws;
 public:
 	void SendToJanus(const std::string& message);
+	void SendToJanusAsync(const std::string& message);
 };
 
 

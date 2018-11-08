@@ -34,6 +34,8 @@ public:
 		SEND_MESSAGE_TO_PEER,
 		NEW_TRACK_ADDED,
 		TRACK_REMOVED,
+		CREATE_OFFER,//added by pcg
+		SET_REMOTE_SDP//added by pcg
 	};
 
 	ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd);

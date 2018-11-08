@@ -469,6 +469,25 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		break;
 	}
 
+	case CREATE_OFFER: {
+		if (InitializePeerConnection()) {
+			peer_connection_->CreateOffer(
+				this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+		}
+		else {
+			main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
+		}
+		break;
+	}
+
+	case SET_REMOTE_SDP: {
+		auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(data);
+		peer_connection_->SetRemoteDescription(
+			DummySetSessionDescriptionObserver::Create(),
+			session_description);
+		break;
+	}
+
 	default:
 		RTC_NOTREACHED();
 		break;
@@ -484,14 +503,12 @@ void ConductorWs::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
 	desc->ToString(&sdp);
 	SendOffer(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
 
-	
-
-	Json::StyledWriter writer;
+	/*Json::StyledWriter writer;
 	Json::Value jmessage;
 	jmessage[kSessionDescriptionTypeName] =
 		webrtc::SdpTypeToString(desc->GetType());
 	jmessage[kSessionDescriptionSdpName] = sdp;
-	SendMessage(writer.write(jmessage));
+	SendMessage(writer.write(jmessage));*/
 }
 
 void ConductorWs::OnFailure(webrtc::RTCError error) {
@@ -508,7 +525,8 @@ void ConductorWs::OnJanusConnected() {
 }
 
 void ConductorWs::CreateSession() {
-	
+
+	int rev_tid1 = GetCurrentThreadId();
 	std::string transactionID=RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
@@ -644,14 +662,8 @@ void ConductorWs::JoinRoom(long long int handleId,long long int feedId) {
 	jmessage["session_id"] = m_SessionId;
 	jmessage["handle_id"] = m_HandleId;
 	client_->SendToJanus(writer.write(jmessage));
-	if (InitializePeerConnection()) {
-		peer_connection_->CreateOffer(
-			this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
-	}
-	else {
-		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
-	}
-	
+	//shift the process to UI thread to createOffer
+	main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
 }
 
 void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::string sdp_desc) {
@@ -675,12 +687,10 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 		rtc::GetValueFromJsonObject(janus_value, "jsep",
 			&janus_value);
 		if (janus_value!=NULL) {
-			//should set remote sdp
+			//shift thread to UI thread to set remote sdp 
 			std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
 				webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, rtc::JsonValueToString(janus_value));
-			peer_connection_->SetRemoteDescription(
-				DummySetSessionDescriptionObserver::Create(),
-				session_description.release());
+			main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, session_description.get());
 		}	
 	};
 
@@ -704,7 +714,8 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
 	jmessage["handle_id"] = m_HandleId;
-	client_->SendToJanus(writer.write(jmessage));
+	//beacause the thread is on UI,so shift thread to ws thread
+	client_->SendToJanusAsync(writer.write(jmessage));
 }
 
 void ConductorWs::trickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate) {
@@ -728,7 +739,7 @@ void ConductorWs::trickleCandidate(long long int handleId, const webrtc::IceCand
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
 	jmessage["handle_id"] = m_HandleId;
-	client_->SendToJanus(writer.write(jmessage));
+	client_->SendToJanusAsync(writer.write(jmessage));
 }
 
 void ConductorWs::trickleCandidateComplete(long long int handleId) {
@@ -744,7 +755,7 @@ void ConductorWs::trickleCandidateComplete(long long int handleId) {
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
 	jmessage["handle_id"] = m_HandleId;
-	client_->SendToJanus(writer.write(jmessage));
+	client_->SendToJanusAsync(writer.write(jmessage));
 }
 
 //we have arrived at OnLocalStream and OnRemoteSteam
