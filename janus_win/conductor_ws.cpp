@@ -529,6 +529,23 @@ void ConductorWs::OnJanusConnected() {
 	CreateSession();
 }
 
+void ConductorWs::OnSendKeepAliveToJanus() {
+	KeepAlive();
+}
+
+void ConductorWs::KeepAlive() {
+	if (m_SessionId > 0) {
+		std::string transactionID = RandomString(12);
+		Json::StyledWriter writer;
+		Json::Value jmessage;
+
+		jmessage["janus"] = "keepalive";
+		jmessage["session_id"] = m_SessionId;
+		jmessage["transaction"] = transactionID;
+		client_->SendToJanus(writer.write(jmessage));
+	}
+}
+
 void ConductorWs::CreateSession() {
 
 	int rev_tid1 = GetCurrentThreadId();

@@ -75,6 +75,17 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 		PeerConnectionWsClient* pws = (PeerConnectionWsClient*)a->getData();
 		pws->m_ws->send(pws->m_msg_to_send.c_str(), uWS::TEXT);
 	});
+
+	m_timer = new uS::Timer(m_hub.getLoop());
+	m_timer->setData((void*)this);
+	m_timer->start([](uS::Timer *timer) {
+		PeerConnectionWsClient* pws = (PeerConnectionWsClient*)timer->getData();
+		if (pws->state_ = CONNECTED) {
+			pws->callback_->OnSendKeepAliveToJanus();
+		}
+		
+	},10000,25000);
+
 	//create websocket thread
 	std::thread t([this,server]() {
 		this->m_hub.onError([](void *user) {
@@ -101,6 +112,8 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 
 		this->m_hub.onDisconnection([](uWS::WebSocket<uWS::CLIENT> *ws, int code, char *message, size_t length) {
 			RTC_LOG(WARNING) << "Client got disconnected";
+			PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
+			pws->state_ = NOT_CONNECTED;
 			std::cout << "Client got disconnected with data: " << ws->getUserData() << ", code: " << code << ", message: <" << std::string(message, length) << ">" << std::endl;
 		});
 

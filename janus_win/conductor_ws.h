@@ -96,6 +96,8 @@ protected:
 
 	void OnJanusConnected() override;
 
+	void OnSendKeepAliveToJanus() override;
+
 	//
 	// MainWndCallback implementation.
 	//
@@ -128,10 +130,11 @@ protected:
 	std::deque<std::string*> pending_messages_;
 	std::string server_;
 	std::map<std::string, std::shared_ptr<JanusTransaction>> m_transactionMap;
-	long long int m_SessionId;
-	long long int m_HandleId;
+	long long int m_SessionId=0LL;
+	long long int m_HandleId=0LL;
 
 	private:
+		void KeepAlive();
 		void CreateSession();
 		void CreateHandle();
 		void JoinRoom(long long int handleId, long long int feedId);

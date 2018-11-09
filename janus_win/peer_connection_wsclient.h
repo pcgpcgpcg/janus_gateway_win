@@ -24,6 +24,7 @@ struct PeerConnectionWsClientObserver {
 	virtual void OnMessageSent(int err) = 0;
 	virtual void OnServerConnectionFailure() = 0;
 	virtual void OnJanusConnected() = 0;
+	virtual void OnSendKeepAliveToJanus() = 0;
 
 protected:
 	virtual ~PeerConnectionWsClientObserver() {}
@@ -73,6 +74,7 @@ public:
 	uWS::Hub m_hub;
 	uWS::WebSocket<uWS::CLIENT> *m_ws = nullptr;
 	uS::Async *m_async;
+	uS::Timer *m_timer;//for keep alive every 25s
 	std::string m_msg_to_send;
 public:
 	State state_;
