@@ -122,6 +122,7 @@ void PeerConnectionWsClient::SendToJanusAsync(const std::string& message) {
 	if (state_ != CONNECTED)
 		return;
 	if (m_ws) {
+		RTC_LOG(INFO) << "send wsmsg:" << message;
 		m_msg_to_send = message;
 		m_async->send();
 	}
@@ -141,7 +142,7 @@ void PeerConnectionWsClient::SendToJanus(const std::string& message) {
 
 void PeerConnectionWsClient::handleMessages(char* message, size_t length) {
 	//½âÎöÕâ¸ömessage
-	callback_->OnMessageFromJanus(0, std::string(message));
+	callback_->OnMessageFromJanus(0, std::string(message,length));
 }
 
 void PeerConnectionWsClient::OnMessage(rtc::Message* msg) {

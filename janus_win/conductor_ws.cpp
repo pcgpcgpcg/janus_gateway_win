@@ -108,6 +108,10 @@ bool ConductorWs::CreatePeerConnection(bool dtls) {
 	RTC_DCHECK(!peer_connection_);
 
 	webrtc::PeerConnectionInterface::RTCConfiguration config;
+	config.tcp_candidate_policy = webrtc::PeerConnectionInterface::TcpCandidatePolicy::kTcpCandidatePolicyDisabled;
+	config.bundle_policy = webrtc::PeerConnectionInterface::BundlePolicy::kBundlePolicyMaxBundle;
+	config.rtcp_mux_policy = webrtc::PeerConnectionInterface::RtcpMuxPolicy::kRtcpMuxPolicyRequire;
+	config.continual_gathering_policy = webrtc::PeerConnectionInterface::ContinualGatheringPolicy::GATHER_CONTINUALLY;
 	config.sdp_semantics = webrtc::SdpSemantics::kUnifiedPlan;
 	config.enable_dtls_srtp = dtls;
 	webrtc::PeerConnectionInterface::IceServer server;
@@ -257,27 +261,28 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 		else if (janus_str == "error") {
 			RTC_LOG(INFO) << "Got an error. ";
 			// Oops, something wrong happened
-			rtc::GetStringFromJsonObject(jmessage, "transaction",
+			/*rtc::GetStringFromJsonObject(jmessage, "transaction",
 				&janus_str);
 			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
 			//call signal
 			if (jt) {
 				jt->Error("123","456");//TODO need to parse the error code and desc
 			}
-			m_transactionMap.erase(janus_str);
+			m_transactionMap.erase(janus_str);*/
 		}
 		else {
 
 			if (janus_str == "event") {
 				RTC_LOG(INFO) << "Got a plugin event! ";
 
-				rtc::GetStringFromJsonObject(jmessage, "transaction",
+				bool bSuccess=rtc::GetStringFromJsonObject(jmessage, "transaction",
 					&janus_str);
-				std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
-				if (jt) {
-					jt->Event(message);
-				}
-
+				if (bSuccess) {
+					std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
+					if (jt) {
+						jt->Event(message);
+					}
+				}				
 			}
 		}
 	}
@@ -684,14 +689,15 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 		Json::Value janus_value;
 		std::string jsep_str;
 		//see if has remote jsep
-		rtc::GetValueFromJsonObject(janus_value, "jsep",
-			&janus_value);
-		if (janus_value!=NULL) {
-			//shift thread to UI thread to set remote sdp 
-			std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-				webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, rtc::JsonValueToString(janus_value));
-			main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, session_description.get());
-		}	
+		if (rtc::GetValueFromJsonObject(jmessage, "jsep",
+			&janus_value)) {
+			if (rtc::GetStringFromJsonObject(janus_value, "sdp",
+				&jsep_str)){
+				std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+					webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
+				main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, session_description.release());
+			}
+		}
 	};
 
 	m_transactionMap[transactionID] = jt;
@@ -732,9 +738,9 @@ void ConductorWs::trickleCandidate(long long int handleId, const webrtc::IceCand
 
 	jcandidate["sdpMid"]= candidate->sdp_mid();
 	jcandidate["sdpMLineIndex"] = candidate->sdp_mline_index();
-	jcandidate["sdpMid"] = sdp;
+	jcandidate["candidate"] = sdp;
 
-	jmessage["janus"] = "message";
+	jmessage["janus"] = "trickle";
 	jmessage["candidate"] = jcandidate;	
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
