@@ -88,21 +88,6 @@ bool ConductorWs::InitializePeerConnection() {
 	return peer_connection_ != nullptr;
 }
 
-bool ConductorWs::ReinitializePeerConnectionForLoopback() {
-	loopback_ = true;
-	std::vector<rtc::scoped_refptr<webrtc::RtpSenderInterface>> senders =
-		peer_connection_->GetSenders();
-	peer_connection_ = nullptr;
-	if (CreatePeerConnection(/*dtls=*/false)) {
-		for (const auto& sender : senders) {
-			peer_connection_->AddTrack(sender->track(), sender->stream_ids());
-		}
-		peer_connection_->CreateOffer(
-			this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
-	}
-	return peer_connection_ != nullptr;
-}
-
 bool ConductorWs::CreatePeerConnection(bool dtls) {
 	RTC_DCHECK(peer_connection_factory_);
 	RTC_DCHECK(!peer_connection_);
@@ -179,6 +164,11 @@ void ConductorWs::OnSignedIn() {
 	main_wnd_->SwitchToPeerList(client_->peers());
 }
 
+//TODO transport layer should emit the event while disconnected
+void ConductorWs::OnJanusDisconnected() {
+	//shift the thread from ws to ui
+	main_wnd_->QueueUIThreadCallback(PEER_CONNECTION_CLOSED, NULL);
+}
 void ConductorWs::OnDisconnected() {
 	RTC_LOG(INFO) << __FUNCTION__;
 
@@ -195,107 +185,17 @@ void ConductorWs::OnPeerConnected(int id, const std::string& name) {
 		main_wnd_->SwitchToPeerList(client_->peers());
 }
 
-void ConductorWs::OnPeerDisconnected(int id) {
-	RTC_LOG(INFO) << __FUNCTION__;
-	if (id == peer_id_) {
-		RTC_LOG(INFO) << "Our peer disconnected";
-		main_wnd_->QueueUIThreadCallback(PEER_CONNECTION_CLOSED, NULL);
-	}
-	else {
-		// Refresh the list if we're showing it.
-		if (main_wnd_->current_ui() == MainWindow::LIST_PEERS)
-			main_wnd_->SwitchToPeerList(client_->peers());
-	}
-}
-
-//because janus self act as an end,so always define peer_id=0
-void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
-	RTC_DCHECK(!message.empty());
-	RTC_LOG(INFO) << "got msg: " << message;
-	//TODO make sure in right state
-	//parse json
-	Json::Reader reader;
-	Json::Value jmessage;
-	if (!reader.parse(message, jmessage)) {
-		RTC_LOG(WARNING) << "Received unknown message. " << message;
-		return;
-	}
-	std::string janus_str;
-	std::string json_object;
-
-	rtc::GetStringFromJsonObject(jmessage, "janus",
-		&janus_str);
-	if (!janus_str.empty()) {
-		if (janus_str == "ack") {
-			// Just an ack, we can probably ignore
-			RTC_LOG(INFO) << "Got an ack on session. ";
-		}
-		else if (janus_str == "success") {
-			rtc::GetStringFromJsonObject(jmessage, "transaction",
-				&janus_str);
-			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
-			//call signal
-			if (jt) {
-				jt->Success(0, message);//handle_id not ready yet
-			}
-			m_transactionMap.erase(janus_str);
-		}
-		else if (janus_str=="trickle") {
-			RTC_LOG(INFO) << "Got a trickle candidate from Janus. ";
-		}
-		else if (janus_str == "webrtcup") {
-			RTC_LOG(INFO) << "The PeerConnection with the gateway is up!";
-		}
-		else if (janus_str == "hangup") {
-			RTC_LOG(INFO) << "A plugin asked the core to hangup a PeerConnection on one of our handles! ";
-		}
-		else if (janus_str == "detached") {
-			RTC_LOG(INFO) << "A plugin asked the core to detach one of our handles! ";
-		}
-		else if (janus_str == "media") {
-			RTC_LOG(INFO) << "Media started/stopped flowing. ";
-		}
-		else if (janus_str == "slowlink") {
-			RTC_LOG(INFO) << "Got a slowlink event! ";
-		}
-		else if (janus_str == "error") {
-			RTC_LOG(INFO) << "Got an error. ";
-			// Oops, something wrong happened
-			/*rtc::GetStringFromJsonObject(jmessage, "transaction",
-				&janus_str);
-			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
-			//call signal
-			if (jt) {
-				jt->Error("123","456");//TODO need to parse the error code and desc
-			}
-			m_transactionMap.erase(janus_str);*/
-		}
-		else {
-
-			if (janus_str == "event") {
-				RTC_LOG(INFO) << "Got a plugin event! ";
-
-				bool bSuccess=rtc::GetStringFromJsonObject(jmessage, "transaction",
-					&janus_str);
-				if (bSuccess) {
-					std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
-					if (jt) {
-						jt->Event(message);
-					}
-				}				
-			}
-		}
-	}
-}
-
-void ConductorWs::OnMessageSent(int err) {
-	// Process the next pending message if any.
-	main_wnd_->QueueUIThreadCallback(SEND_MESSAGE_TO_PEER, NULL);
-}
-
 void ConductorWs::OnServerConnectionFailure() {
 	main_wnd_->MessageBox("Error", ("Failed to connect to " + server_).c_str(),
 		true);
+}
+
+void ConductorWs::ConnectToPeer(int peer_id) {
+
+}
+
+void ConductorWs::OnMessageSent(int err) {
+
 }
 
 //
@@ -320,26 +220,6 @@ void ConductorWs::StartLogin(const std::string& server, int port) {
 
 void ConductorWs::DisconnectFromServer() {
 	
-}
-
-void ConductorWs::ConnectToPeer(int peer_id) {
-	RTC_DCHECK(peer_id_ == -1);
-	RTC_DCHECK(peer_id != -1);
-
-	if (peer_connection_.get()) {
-		main_wnd_->MessageBox(
-			"Error", "We only support connecting to one peer at a time", true);
-		return;
-	}
-
-	if (InitializePeerConnection()) {
-		peer_id_ = peer_id;
-		peer_connection_->CreateOffer(
-			this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
-	}
-	else {
-		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
-	}
 }
 
 std::unique_ptr<cricket::VideoCapturer> ConductorWs::OpenVideoCaptureDevice() {
@@ -438,25 +318,6 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		}
 		break;
 
-	case SEND_MESSAGE_TO_PEER: {
-		RTC_LOG(INFO) << "SEND_MESSAGE_TO_PEER";
-		std::string* msg = reinterpret_cast<std::string*>(data);
-		if (msg) {
-			// For convenience, we always run the message through the queue.
-			// This way we can be sure that messages are sent to the server
-			// in the same order they were signaled without much hassle.
-			pending_messages_.push_back(msg);
-		}
-
-		if (!pending_messages_.empty()) {
-			msg = pending_messages_.front();
-			pending_messages_.pop_front();
-			client_->SendToJanus(*msg);
-			delete msg;
-		}
-		break;
-	}
-
 	case NEW_TRACK_ADDED: {
 		auto* track = reinterpret_cast<webrtc::MediaStreamTrackInterface*>(data);
 		if (track->kind() == webrtc::MediaStreamTrackInterface::kVideoKind) {
@@ -507,24 +368,14 @@ void ConductorWs::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
 	std::string sdp;
 	desc->ToString(&sdp);
 	SendOffer(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
-
-	/*Json::StyledWriter writer;
-	Json::Value jmessage;
-	jmessage[kSessionDescriptionTypeName] =
-		webrtc::SdpTypeToString(desc->GetType());
-	jmessage[kSessionDescriptionSdpName] = sdp;
-	SendMessage(writer.write(jmessage));*/
 }
 
 void ConductorWs::OnFailure(webrtc::RTCError error) {
 	RTC_LOG(LERROR) << ToString(error.type()) << ": " << error.message();
 }
 
-void ConductorWs::SendMessage(const std::string& json_object) {
-	std::string* msg = new std::string(json_object);
-	main_wnd_->QueueUIThreadCallback(SEND_MESSAGE_TO_PEER, msg);
-}
-
+/*----------------------------------------------------------------*/
+/*-----------------janus protocol implementation------------------*/
 void ConductorWs::OnJanusConnected() {
 	CreateSession();
 }
@@ -780,6 +631,87 @@ void ConductorWs::trickleCandidateComplete(long long int handleId) {
 	jmessage["handle_id"] = m_HandleId;
 	client_->SendToJanusAsync(writer.write(jmessage));
 }
+
+//because janus self act as an end,so always define peer_id=0
+void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
+	RTC_DCHECK(!message.empty());
+	RTC_LOG(INFO) << "got msg: " << message;
+	//TODO make sure in right state
+	//parse json
+	Json::Reader reader;
+	Json::Value jmessage;
+	if (!reader.parse(message, jmessage)) {
+		RTC_LOG(WARNING) << "Received unknown message. " << message;
+		return;
+	}
+	std::string janus_str;
+	std::string json_object;
+
+	rtc::GetStringFromJsonObject(jmessage, "janus",
+		&janus_str);
+	if (!janus_str.empty()) {
+		if (janus_str == "ack") {
+			// Just an ack, we can probably ignore
+			RTC_LOG(INFO) << "Got an ack on session. ";
+		}
+		else if (janus_str == "success") {
+			rtc::GetStringFromJsonObject(jmessage, "transaction",
+				&janus_str);
+			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
+			//call signal
+			if (jt) {
+				jt->Success(0, message);//handle_id not ready yet
+			}
+			m_transactionMap.erase(janus_str);
+		}
+		else if (janus_str == "trickle") {
+			RTC_LOG(INFO) << "Got a trickle candidate from Janus. ";
+		}
+		else if (janus_str == "webrtcup") {
+			RTC_LOG(INFO) << "The PeerConnection with the gateway is up!";
+		}
+		else if (janus_str == "hangup") {
+			RTC_LOG(INFO) << "A plugin asked the core to hangup a PeerConnection on one of our handles! ";
+		}
+		else if (janus_str == "detached") {
+			RTC_LOG(INFO) << "A plugin asked the core to detach one of our handles! ";
+		}
+		else if (janus_str == "media") {
+			RTC_LOG(INFO) << "Media started/stopped flowing. ";
+		}
+		else if (janus_str == "slowlink") {
+			RTC_LOG(INFO) << "Got a slowlink event! ";
+		}
+		else if (janus_str == "error") {
+			RTC_LOG(INFO) << "Got an error. ";
+			// Oops, something wrong happened
+			/*rtc::GetStringFromJsonObject(jmessage, "transaction",
+			&janus_str);
+			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
+			//call signal
+			if (jt) {
+			jt->Error("123","456");//TODO need to parse the error code and desc
+			}
+			m_transactionMap.erase(janus_str);*/
+		}
+		else {
+
+			if (janus_str == "event") {
+				RTC_LOG(INFO) << "Got a plugin event! ";
+
+				bool bSuccess = rtc::GetStringFromJsonObject(jmessage, "transaction",
+					&janus_str);
+				if (bSuccess) {
+					std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
+					if (jt) {
+						jt->Event(message);
+					}
+				}
+			}
+		}
+	}
+}
+
 
 //we have arrived at OnLocalStream and OnRemoteSteam
 //thread problem should fix when debug

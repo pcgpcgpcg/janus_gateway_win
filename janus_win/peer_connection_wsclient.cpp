@@ -114,6 +114,7 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 			RTC_LOG(WARNING) << "Client got disconnected";
 			PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
 			pws->state_ = NOT_CONNECTED;
+			pws->callback_->OnJanusDisconnected();
 			std::cout << "Client got disconnected with data: " << ws->getUserData() << ", code: " << code << ", message: <" << std::string(message, length) << ">" << std::endl;
 		});
 

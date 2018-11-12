@@ -47,7 +47,6 @@ public:
 protected:
 	~ConductorWs();
 	bool InitializePeerConnection();
-	bool ReinitializePeerConnectionForLoopback();
 	bool CreatePeerConnection(bool dtls);
 	void DeletePeerConnection();
 	void EnsureStreamingUI();
@@ -86,8 +85,6 @@ protected:
 
 	void OnPeerConnected(int id, const std::string& name) override;
 
-	void OnPeerDisconnected(int id) override;
-
 	void OnMessageFromJanus(int peer_id, const std::string& message) override;
 
 	void OnMessageSent(int err) override;
@@ -95,6 +92,8 @@ protected:
 	void OnServerConnectionFailure() override;
 
 	void OnJanusConnected() override;
+
+	void OnJanusDisconnected() override;
 
 	void OnSendKeepAliveToJanus() override;
 
@@ -117,9 +116,6 @@ protected:
 	void OnFailure(webrtc::RTCError error) override;
 
 protected:
-	// Send a message to the remote peer.
-	void SendMessage(const std::string& json_object);
-
 	int peer_id_;
 	bool loopback_;
 	rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
