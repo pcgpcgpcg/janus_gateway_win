@@ -74,6 +74,7 @@ public:
 	uWS::Hub m_hub;
 	uWS::WebSocket<uWS::CLIENT> *m_ws = nullptr;
 	uS::Async *m_async;
+	uS::Async *m_async_close;//just for quic the ws loop
 	uS::Timer *m_timer;//for keep alive every 25s
 	std::string m_msg_to_send;
 public:
@@ -82,6 +83,7 @@ public:
 public:
 	void SendToJanus(const std::string& message);
 	void SendToJanusAsync(const std::string& message);
+	void CloseJanusConn();
 };
 
 

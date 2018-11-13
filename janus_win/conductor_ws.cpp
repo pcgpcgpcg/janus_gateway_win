@@ -8,6 +8,7 @@
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
+#include "api/test/fakeconstraints.h"
 #include "defaults.h"
 #include "media/engine/webrtcvideocapturerfactory.h"
 #include "modules/audio_device/include/audio_device.h"
@@ -48,6 +49,8 @@ ConductorWs::ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd)
 
 ConductorWs::~ConductorWs() {
 	RTC_DCHECK(!peer_connection_);
+	//TODO suitable here?
+	client_->CloseJanusConn();
 }
 
 bool ConductorWs::connection_active() const {
@@ -103,8 +106,17 @@ bool ConductorWs::CreatePeerConnection(bool dtls) {
 	server.uri = GetPeerConnectionString();
 	config.servers.push_back(server);
 
+	webrtc::PeerConnectionInterface::BitrateParameters bitrateParam;
+	bitrateParam.min_bitrate_bps = absl::optional<int>(128000);
+	bitrateParam.current_bitrate_bps = absl::optional<int>(256000);
+	bitrateParam.max_bitrate_bps = absl::optional<int>(512000);
+	
+
 	peer_connection_ = peer_connection_factory_->CreatePeerConnection(
 		config, nullptr, nullptr, this);
+	//set max/min bitrate
+	peer_connection_->SetBitrate(bitrateParam);
+
 	return peer_connection_ != nullptr;
 }
 
@@ -270,6 +282,23 @@ void ConductorWs::AddTracks() {
 	std::unique_ptr<cricket::VideoCapturer> video_device =
 		OpenVideoCaptureDevice();
 	if (video_device) {
+		webrtc::FakeConstraints constraints;
+		std::list<std::string> keyList = { webrtc::MediaConstraintsInterface::kMinWidth, webrtc::MediaConstraintsInterface::kMaxWidth,
+			webrtc::MediaConstraintsInterface::kMinHeight, webrtc::MediaConstraintsInterface::kMaxHeight,
+			webrtc::MediaConstraintsInterface::kMinFrameRate, webrtc::MediaConstraintsInterface::kMaxFrameRate,
+			webrtc::MediaConstraintsInterface::kMinAspectRatio, webrtc::MediaConstraintsInterface::kMaxAspectRatio };
+
+		//set media constraints
+		std::map<std::string, std::string> opts;
+		opts[webrtc::MediaConstraintsInterface::kMaxFrameRate] = 18;
+		opts[webrtc::MediaConstraintsInterface::kMaxWidth] = 1280;
+		opts[webrtc::MediaConstraintsInterface::kMaxHeight] = 720;
+
+		for (auto key : keyList) {
+			if (opts.find(key) != opts.end()) {
+				constraints.AddMandatory(key, opts.at(key));
+			}
+		}
 		rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track_(
 			peer_connection_factory_->CreateVideoTrack(
 				kVideoLabel, peer_connection_factory_->CreateVideoSource(
@@ -351,6 +380,8 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		peer_connection_->SetRemoteDescription(
 			DummySetSessionDescriptionObserver::Create(),
 			session_description);
+		//TODO fixme suitable here?
+		SendBitrateConstraint();
 		break;
 	}
 
@@ -626,6 +657,55 @@ void ConductorWs::trickleCandidateComplete(long long int handleId) {
 
 	jmessage["janus"] = "trickle";
 	jmessage["candidate"] = jcandidate;
+	jmessage["transaction"] = transactionID;
+	jmessage["session_id"] = m_SessionId;
+	jmessage["handle_id"] = m_HandleId;
+	client_->SendToJanusAsync(writer.write(jmessage));
+}
+
+void ConductorWs::SendBitrateConstraint() {
+	std::string transactionID = RandomString(12);
+	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
+	jt->transactionId = transactionID;
+
+	jt->Event = [=](std::string message) {
+		//parse json
+		Json::Reader reader;
+		Json::Value jmessage;
+		if (!reader.parse(message, jmessage)) {
+			RTC_LOG(WARNING) << "Received unknown message. " << message;
+			return;
+		}
+		std::string janus_str;
+		std::string json_object;
+		Json::Value janus_value;
+		Json::Value janus_value_sub1;
+		std::string jsep_str;
+		//see if has remote jsep
+		if (rtc::GetValueFromJsonObject(jmessage, "plugindata",
+			&janus_value)) {
+			if (rtc::GetValueFromJsonObject(janus_value, "data",
+				&janus_value_sub1)) {
+				if (rtc::GetStringFromJsonObject(janus_value_sub1, "result",
+					&jsep_str)) {
+					if (jsep_str != "ok") {
+						//没有设置成功
+					}
+				}
+			}
+			
+		}
+	};
+	m_transactionMap[transactionID] = jt;
+
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	Json::Value jbody;
+
+	jbody["bitrate"] = 128000;
+
+	jmessage["janus"] = "message";
+	jmessage["body"] = jbody;
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
 	jmessage["handle_id"] = m_HandleId;

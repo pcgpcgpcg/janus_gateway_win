@@ -13,35 +13,14 @@
 
 using rtc::sprintfn;
 
-namespace {
-
-	// This is our magical hangup signal.
-	const char kByeMessage[] = "BYE";
-	// Delay between server connection retries, in milliseconds
-	const int kReconnectDelay = 2000;
-
-	rtc::AsyncSocket* CreateClientSocket(int family) {
-#ifdef WIN32
-		rtc::Win32Socket* sock = new rtc::Win32Socket();
-		sock->CreateT(family, SOCK_STREAM);
-		return sock;
-#elif defined(WEBRTC_POSIX)
-		rtc::Thread* thread = rtc::Thread::Current();
-		RTC_DCHECK(thread != NULL);
-		return thread->socketserver()->CreateAsyncSocket(family, SOCK_STREAM);
-#else
-#error Platform not supported.
-#endif
-	}
-
-}  // namespace
-
 PeerConnectionWsClient::PeerConnectionWsClient()
 	: callback_(NULL), resolver_(NULL), state_(NOT_CONNECTED), my_id_(-1) {
 	//m_ws = NULL;
 }
 
-PeerConnectionWsClient::~PeerConnectionWsClient() {}
+PeerConnectionWsClient::~PeerConnectionWsClient() {
+
+}
 
 
 int PeerConnectionWsClient::id() const {
@@ -67,7 +46,9 @@ void PeerConnectionWsClient::RegisterObserver(
 void PeerConnectionWsClient::Connect(const std::string& server,
 	const std::string& client_id) {
 	int rev_tid1 = GetCurrentThreadId();
+	RTC_LOG(WARNING) << "Connect ws! Thread ID=. " << rev_tid1;
 	m_async = new uS::Async(m_hub.getLoop());
+	m_async_close= new uS::Async(m_hub.getLoop());
 	m_async->setData((void*)this);
 	//make sure this lambda run in ws thread
 	m_async->start([](uS::Async *a) {
@@ -90,11 +71,12 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 	std::thread t([this,server]() {
 		this->m_hub.onError([](void *user) {
 			int error_code = (long)user;
+			
 			PeerConnectionWsClient* pws = (PeerConnectionWsClient*)user;
 			if (pws->state_ != NOT_CONNECTED) {
 				RTC_LOG(WARNING)
 					<< "The client must not be connected before you can call Connect()";
-				pws->callback_->OnServerConnectionFailure();
+				//pws->callback_->OnServerConnectionFailure();
 			}
 		});
 		//connection handler
@@ -114,13 +96,16 @@ void PeerConnectionWsClient::Connect(const std::string& server,
 			RTC_LOG(WARNING) << "Client got disconnected";
 			PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
 			pws->state_ = NOT_CONNECTED;
+			pws->m_hub.getDefaultGroup<uWS::CLIENT>().close();
 			pws->callback_->OnJanusDisconnected();
 			std::cout << "Client got disconnected with data: " << ws->getUserData() << ", code: " << code << ", message: <" << std::string(message, length) << ">" << std::endl;
 		});
 
 		this->m_hub.onMessage([](uWS::WebSocket<uWS::CLIENT> *ws, char *message, size_t length, uWS::OpCode opCode) {
 			PeerConnectionWsClient* pws = (PeerConnectionWsClient*)(ws->getUserData());
-			pws->handleMessages(message, length);
+			if (pws->state_ == CONNECTED) {
+				pws->handleMessages(message, length);
+			}
 		});
 
 		std::map<std::string, std::string> protocol_map;
@@ -163,4 +148,16 @@ void PeerConnectionWsClient::OnMessage(rtc::Message* msg) {
 	// ignore msg; there is currently only one supported message ("retry")
 	//这里需要实现断线重新连接
 	//DoConnect();
+}
+
+
+//close websocket connection and release all the resource
+void PeerConnectionWsClient::CloseJanusConn() {
+	state_ = NOT_CONNECTED;
+	m_timer->stop();
+	m_hub.getDefaultGroup<uWS::CLIENT>().close();
+	m_hub.getLoop()->stop_flag = true;
+	if (ws_thread.joinable()) {
+		ws_thread.join();
+	}	
 }
