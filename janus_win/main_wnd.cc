@@ -292,6 +292,18 @@ void MainWnd::OnPaint() {
                       thumb_height, 0, 0, bmi.bmiHeader.biWidth,
                       -bmi.bmiHeader.biHeight, image, &bmi, DIB_RGB_COLORS,
                       SRCCOPY);
+
+		StretchDIBits(dc_mem, logical_area.x - thumb_width - 10,
+			logical_area.y - thumb_height*2 - 10, thumb_width,
+			thumb_height, 0, 0, bmi.bmiHeader.biWidth,
+			-bmi.bmiHeader.biHeight, image, &bmi, DIB_RGB_COLORS,
+			SRCCOPY);
+
+		StretchDIBits(dc_mem, logical_area.x - thumb_width - 10,
+			logical_area.y - thumb_height*3 - 10, thumb_width,
+			thumb_height, 0, 0, bmi.bmiHeader.biWidth,
+			-bmi.bmiHeader.biHeight, image, &bmi, DIB_RGB_COLORS,
+			SRCCOPY);
       }
 
       BitBlt(ps.hdc, 0, 0, logical_area.x, logical_area.y, dc_mem, 0, 0,
@@ -342,7 +354,7 @@ void MainWnd::OnDefaultAction() {
     std::string port_str(GetWindowText(edit2_));
     int port = port_str.length() ? atoi(port_str.c_str()) : 0;
     callback_->StartLogin(server, port);
-  } else if (ui_ == LIST_PEERS) {
+  } /*else if (ui_ == LIST_PEERS) {
     LRESULT sel = ::SendMessage(listbox_, LB_GETCURSEL, 0, 0);
     if (sel != LB_ERR) {
       LRESULT peer_id = ::SendMessage(listbox_, LB_GETITEMDATA, sel, 0);
@@ -350,7 +362,7 @@ void MainWnd::OnDefaultAction() {
         callback_->ConnectToPeer(peer_id);
       }
     }
-  } else {
+  }*/ else {
     MessageBoxA(wnd_, "OK!", "Yeah", MB_OK);
   }
 }
@@ -389,11 +401,11 @@ bool MainWnd::OnMessage(UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
       if (button_ == reinterpret_cast<HWND>(lp)) {
         if (BN_CLICKED == HIWORD(wp))
           OnDefaultAction();
-      } else if (listbox_ == reinterpret_cast<HWND>(lp)) {
+      } /*else if (listbox_ == reinterpret_cast<HWND>(lp)) {
         if (LBN_DBLCLK == HIWORD(wp)) {
           OnDefaultAction();
         }
-      }
+      }*/
       return true;
 
     case WM_CLOSE:

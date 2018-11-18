@@ -325,7 +325,7 @@ void ConductorWs::DisconnectFromCurrentPeer() {
 	}
 
 	if (main_wnd_->IsWindow())
-		main_wnd_->SwitchToPeerList(client_->peers());
+		main_wnd_->SwitchToConnectUI();
 }
 
 void ConductorWs::UIThreadCallback(int msg_id, void* data) {
@@ -335,12 +335,7 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		DeletePeerConnection();
 
 		if (main_wnd_->IsWindow()) {
-			if (client_->is_connected()) {
-				main_wnd_->SwitchToPeerList(client_->peers());
-			}
-			else {
 				main_wnd_->SwitchToConnectUI();
-			}
 		}
 		else {
 			DisconnectFromServer();
