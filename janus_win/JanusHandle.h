@@ -6,7 +6,7 @@ public:
 	JanusHandle();
 	~JanusHandle();
 
-private:
+public:
 	 int handleId;
 	 int feedId;
 	 std::string display;

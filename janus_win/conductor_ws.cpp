@@ -493,7 +493,7 @@ void ConductorWs::CreateHandle() {
 		std::string handleId_str = rtc::JsonValueToString(janus_handle_value);
 		m_HandleId = std::stoll(handleId_str);
 
-		JoinRoom(m_HandleId, 0);//TODO feedid means nothing in echotest,else?
+		JoinRoom("",m_HandleId, 0);//TODO feedid means nothing in echotest,else?
 	};
 
 	jt->Event = [=](std::string message) {
@@ -508,8 +508,6 @@ void ConductorWs::CreateHandle() {
 
 	Json::StyledWriter writer;
 	Json::Value jmessage;
-	Json::Value jdata;
-	jdata["id"]=
 	jmessage["janus"] = "attach";
 	jmessage["plugin"] = "janus.plugin.echotest";
 	jmessage["transaction"] = transactionID;
@@ -517,7 +515,61 @@ void ConductorWs::CreateHandle() {
 	client_->SendToJanus(writer.write(jmessage));
 }
 
-void ConductorWs::JoinRoom(long long int handleId,long long int feedId) {
+//publisher send attach
+void ConductorWs::CreateHandle(std::string pluginName, long long int feedId, std::string display) {
+	std::string transactionID = RandomString(12);
+	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
+	jt->transactionId = transactionID;
+	jt->Success = [&](int handle_id, std::string message) {
+		//parse json
+		Json::Reader reader;
+		Json::Value jmessage;
+		if (!reader.parse(message, jmessage)) {
+			RTC_LOG(WARNING) << "Received unknown message. " << message;
+			return;
+		}
+		std::string janus_str;
+		std::string json_object;
+		Json::Value janus_value;
+		Json::Value janus_handle_value;
+
+		rtc::GetValueFromJsonObject(jmessage, "data",
+			&janus_value);
+		rtc::GetValueFromJsonObject(janus_value, "id",
+			&janus_handle_value);
+		std::string handleId_str = rtc::JsonValueToString(janus_handle_value);
+		m_HandleId = std::stoll(handleId_str);
+		//add handle to the map
+		std::shared_ptr<JanusHandle> jh(new JanusHandle());
+		jh->handleId = m_HandleId;
+		jh->display = display;
+		jh->feedId = feedId;
+		m_handleMap[m_HandleId] = jh;
+
+		JoinRoom(pluginName,m_HandleId, feedId);//TODO feedid means nothing in echotest,else?
+	};
+
+	jt->Event = [=](std::string message) {
+
+	};
+
+	jt->Error = [=](std::string, std::string) {
+		RTC_LOG(INFO) << "CreateHandle error:";
+	};
+
+	m_transactionMap[transactionID] = jt;
+
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	jmessage["janus"] = "attach";
+	jmessage["plugin"] = pluginName;
+	jmessage["transaction"] = transactionID;
+	jmessage["session_id"] = m_SessionId;
+	client_->SendToJanus(writer.write(jmessage));
+}
+
+
+void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long long int feedId) {
 	//rtcEvents.onPublisherJoined(handle.handleId);
 	std::string transactionID = RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
@@ -553,13 +605,37 @@ void ConductorWs::JoinRoom(long long int handleId,long long int feedId) {
 	Json::StyledWriter writer;
 	Json::Value jmessage;
 	Json::Value jbody;
-	jbody["audio"] = true;
-	jbody["video"] = true;
-	jmessage["body"] = jbody;
-	jmessage["janus"] = "message";
-	jmessage["transaction"] = transactionID;
-	jmessage["session_id"] = m_SessionId;
-	jmessage["handle_id"] = m_HandleId;
+	if (pluginName == "janus.plugin.videoroom") {
+		jbody["request"] = "join";
+		jbody["room"] = "1234";//FIXME should be variable
+		if (feedId == 0) {
+			jbody["ptype"] = "publisher";
+			jbody["display"] = "pcg";//FIXME should be variable
+		}
+		else {
+			jbody["ptype"] = "subscriber";
+			jbody["feed"] = feedId;
+			jbody["private_id"] = 0;//FIXME should be variable
+		}
+		jmessage["body"] = jbody;
+		jmessage["janus"] = "message";
+		jmessage["transaction"] = transactionID;
+		jmessage["session_id"] = m_SessionId;
+		jmessage["handle_id"] = m_HandleId;
+	}
+	else if (pluginName == "janus.plugin.audiobridge") {
+
+	}
+	else if (pluginName == "janus.plugin.echotest") {
+		jbody["audio"] = true;
+		jbody["video"] = true;
+		jmessage["body"] = jbody;
+		jmessage["janus"] = "message";
+		jmessage["transaction"] = transactionID;
+		jmessage["session_id"] = m_SessionId;
+		jmessage["handle_id"] = m_HandleId;
+	}
+	
 	client_->SendToJanus(writer.write(jmessage));
 	//shift the process to UI thread to createOffer
 	main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
@@ -706,6 +782,8 @@ void ConductorWs::SendBitrateConstraint() {
 	jmessage["handle_id"] = m_HandleId;
 	client_->SendToJanusAsync(writer.write(jmessage));
 }
+
+
 
 //because janus self act as an end,so always define peer_id=0
 void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {

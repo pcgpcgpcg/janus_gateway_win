@@ -11,6 +11,7 @@
 #include "main_wnd.h"
 #include "peer_connection_wsclient.h"
 #include "JanusTransaction.h"
+#include "JanusHandle.h"
 
 #include "defaults.h"
 
@@ -126,6 +127,7 @@ protected:
 	std::deque<std::string*> pending_messages_;
 	std::string server_;
 	std::map<std::string, std::shared_ptr<JanusTransaction>> m_transactionMap;
+	std::map<long long int, std::shared_ptr<JanusHandle>> m_handleMap;
 	long long int m_SessionId=0LL;
 	long long int m_HandleId=0LL;
 
@@ -133,7 +135,8 @@ protected:
 		void KeepAlive();
 		void CreateSession();
 		void CreateHandle();
-		void JoinRoom(long long int handleId, long long int feedId);
+		void CreateHandle(std::string pluginName, long long int feedId, std::string display);
+		void JoinRoom(std::string pluginName, long long int handleId, long long int feedId);
 		void SendOffer(long long int handleId, std::string sdp_type, std::string sdp_desc);
 		void trickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate);
 		void trickleCandidateComplete(long long int handleId);
