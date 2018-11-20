@@ -134,6 +134,7 @@
     <ClInclude Include="JanusHandle.h" />
     <ClInclude Include="JanusTransaction.h" />
     <ClInclude Include="main_wnd.h" />
+    <ClInclude Include="peer_connection.h" />
     <ClInclude Include="peer_connection_client.h" />
     <ClInclude Include="peer_connection_wsclient.h" />
   </ItemGroup>
@@ -145,6 +146,7 @@
     <ClCompile Include="JanusTransaction.cpp" />
     <ClCompile Include="main.cc" />
     <ClCompile Include="main_wnd.cc" />
+    <ClCompile Include="peer_connection.cpp" />
     <ClCompile Include="peer_connection_client.cc" />
     <ClCompile Include="peer_connection_wsclient.cpp" />
   </ItemGroup>

@@ -45,6 +45,9 @@
     <ClInclude Include="JanusTransaction.h">
       <Filter>janus</Filter>
     </ClInclude>
+    <ClInclude Include="peer_connection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="conductor.cc">
@@ -73,6 +76,9 @@
     </ClCompile>
     <ClCompile Include="JanusTransaction.cpp">
       <Filter>janus</Filter>
+    </ClCompile>
+    <ClCompile Include="peer_connection.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
