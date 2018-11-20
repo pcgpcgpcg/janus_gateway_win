@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <list>
 
 #include "api/mediastreaminterface.h"
 #include "api/peerconnectioninterface.h"
@@ -14,6 +15,12 @@
 #include "JanusHandle.h"
 
 #include "defaults.h"
+
+#include "rtc_base/checks.h"
+#include "rtc_base/json.h"
+#include "rtc_base/logging.h"
+
+using namespace std;
 
 namespace webrtc {
 	class VideoCaptureModule;
@@ -41,17 +48,17 @@ public:
 
 	ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd);
 
-	bool connection_active() const;
+	bool connection_active(long long int handleId) const;
 
 	void Close() override;
 
 protected:
 	~ConductorWs();
-	bool InitializePeerConnection();
-	bool CreatePeerConnection(bool dtls);
-	void DeletePeerConnection();
+	bool InitializePeerConnection(long long int handleId, bool bPublisher);
+	bool CreatePeerConnection(long long int handleId,bool dtls);
+	void DeletePeerConnection(long long int handleId);
 	void EnsureStreamingUI();
-	void AddTracks();
+	void AddTracks(long long int handleId);
 	std::unique_ptr<cricket::VideoCapturer> OpenVideoCaptureDevice();
 
 	//
@@ -119,7 +126,8 @@ protected:
 protected:
 	int peer_id_;
 	bool loopback_;
-	rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
+	//rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
+	std::map<long long int, rtc::scoped_refptr<webrtc::PeerConnectionInterface>> m_peer_connection_map;
 	rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface>
 		peer_connection_factory_;
 	PeerConnectionWsClient* client_;

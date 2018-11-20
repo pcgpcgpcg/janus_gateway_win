@@ -14,9 +14,7 @@
 #include "modules/audio_device/include/audio_device.h"
 #include "modules/audio_processing/include/audio_processing.h"
 #include "modules/video_capture/video_capture_factory.h"
-#include "rtc_base/checks.h"
-#include "rtc_base/json.h"
-#include "rtc_base/logging.h"
+
 
 // Names used for a IceCandidate JSON object.
 const char kCandidateSdpMidName[] = "sdpMid";
@@ -27,6 +25,10 @@ const char kCandidateSdpName[] = "candidate";
 const char kSessionDescriptionTypeName[] = "type";
 const char kSessionDescriptionSdpName[] = "sdp";
 const char kJanusOptName[] = "janus";
+
+//json handle function
+std::string OptString(std::string message, list<string> key);
+long long int OptLLInt(std::string message, list<string> key);
 
 class DummySetSessionDescriptionObserver
 	: public webrtc::SetSessionDescriptionObserver {
@@ -48,22 +50,32 @@ ConductorWs::ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd)
 }
 
 ConductorWs::~ConductorWs() {
-	RTC_DCHECK(!peer_connection_);
+	for (auto &pc : m_peer_connection_map) {
+		RTC_DCHECK(!pc.second);
+	}
+	//RTC_DCHECK(!peer_connection_);
 	//TODO suitable here?
 	client_->CloseJanusConn();
 }
 
-bool ConductorWs::connection_active() const {
-	return peer_connection_ != nullptr;
+bool ConductorWs::connection_active(long long int handleId) const {
+	return m_peer_connection_map.at[handleId] != nullptr;
+	//return peer_connection_ != nullptr;
 }
 
 void ConductorWs::Close() {
 	DeletePeerConnection();
 }
 
-bool ConductorWs::InitializePeerConnection() {
+bool ConductorWs::InitializePeerConnection(long long int handleId,bool bPublisher) {
 	RTC_DCHECK(!peer_connection_factory_);
-	RTC_DCHECK(!peer_connection_);
+	if (m_peer_connection_map.find(handleId) != m_peer_connection_map.end()) {
+		//existing
+		return false;
+	}
+
+	rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
+	m_peer_connection_map[handleId] = peer_connection_;
 
 	peer_connection_factory_ = webrtc::CreatePeerConnectionFactory(
 		nullptr /* network_thread */, nullptr /* worker_thread */,
@@ -77,23 +89,28 @@ bool ConductorWs::InitializePeerConnection() {
 	if (!peer_connection_factory_) {
 		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnectionFactory",
 			true);
-		DeletePeerConnection();
+		DeletePeerConnection(handleId);
 		return false;
 	}
 
-	if (!CreatePeerConnection(/*dtls=*/true)) {
+	if (!CreatePeerConnection(handleId,/*dtls=*/true)) {
 		main_wnd_->MessageBox("Error", "CreatePeerConnection failed", true);
-		DeletePeerConnection();
+		DeletePeerConnection(handleId);
 	}
-
-	AddTracks();
+	//subscriber no need local tracks(audio and video)
+	if (bPublisher) {
+		AddTracks(handleId);
+	}
 
 	return peer_connection_ != nullptr;
 }
 
-bool ConductorWs::CreatePeerConnection(bool dtls) {
+bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 	RTC_DCHECK(peer_connection_factory_);
-	RTC_DCHECK(!peer_connection_);
+	if (m_peer_connection_map.find(handleId) == m_peer_connection_map.end()) {
+		//not existed
+		return false;
+	}
 
 	webrtc::PeerConnectionInterface::RTCConfiguration config;
 	config.tcp_candidate_policy = webrtc::PeerConnectionInterface::TcpCandidatePolicy::kTcpCandidatePolicyDisabled;
@@ -112,25 +129,22 @@ bool ConductorWs::CreatePeerConnection(bool dtls) {
 	bitrateParam.max_bitrate_bps = absl::optional<int>(512000);
 	
 
-	peer_connection_ = peer_connection_factory_->CreatePeerConnection(
+	m_peer_connection_map[handleId] = peer_connection_factory_->CreatePeerConnection(
 		config, nullptr, nullptr, this);
 	//set max/min bitrate
-	peer_connection_->SetBitrate(bitrateParam);
+	m_peer_connection_map[handleId]->SetBitrate(bitrateParam);
 
-	return peer_connection_ != nullptr;
+	return m_peer_connection_map[handleId] != nullptr;
 }
 
-void ConductorWs::DeletePeerConnection() {
+void ConductorWs::DeletePeerConnection(long long int handleId) {
 	main_wnd_->StopLocalRenderer();
 	main_wnd_->StopRemoteRenderer();
-	peer_connection_ = nullptr;
-	peer_connection_factory_ = nullptr;
-	peer_id_ = -1;
-	loopback_ = false;
+	m_peer_connection_map[handleId] = nullptr;
+	//peer_connection_factory_ = nullptr; //TODO should destroy before quit
 }
 
 void ConductorWs::EnsureStreamingUI() {
-	RTC_DCHECK(peer_connection_);
 	if (main_wnd_->IsWindow()) {
 		if (main_wnd_->current_ui() != MainWindow::STREAMING)
 			main_wnd_->SwitchToStreamingUI();
@@ -264,8 +278,8 @@ std::unique_ptr<cricket::VideoCapturer> ConductorWs::OpenVideoCaptureDevice() {
 	return capturer;
 }
 
-void ConductorWs::AddTracks() {
-	if (!peer_connection_->GetSenders().empty()) {
+void ConductorWs::AddTracks(long long int handleId) {
+	if (!m_peer_connection_map[handleId]->GetSenders().empty()) {
 		return;  // Already added tracks.
 	}
 
@@ -273,7 +287,7 @@ void ConductorWs::AddTracks() {
 		peer_connection_factory_->CreateAudioTrack(
 			kAudioLabel, peer_connection_factory_->CreateAudioSource(
 				cricket::AudioOptions())));
-	auto result_or_error = peer_connection_->AddTrack(audio_track, { kStreamId });
+	auto result_or_error = m_peer_connection_map[handleId]->AddTrack(audio_track, { kStreamId });
 	if (!result_or_error.ok()) {
 		RTC_LOG(LS_ERROR) << "Failed to add audio track to PeerConnection: "
 			<< result_or_error.error().message();
@@ -305,7 +319,7 @@ void ConductorWs::AddTracks() {
 					std::move(video_device), nullptr)));
 		main_wnd_->StartLocalRenderer(video_track_);
 
-		result_or_error = peer_connection_->AddTrack(video_track_, { kStreamId });
+		result_or_error = m_peer_connection_map[handleId]->AddTrack(video_track_, { kStreamId });
 		if (!result_or_error.ok()) {
 			RTC_LOG(LS_ERROR) << "Failed to add video track to PeerConnection: "
 				<< result_or_error.error().message();
@@ -431,28 +445,12 @@ void ConductorWs::CreateSession() {
 	jt->transactionId = transactionID;
 
 	//TODO Is it possible for lamda expression here?
-	jt->Success = [=](int handle_id,std::string message) mutable {
-		//parse json
-		Json::Reader reader;
-		Json::Value jmessage;
-		if (!reader.parse(message, jmessage)) {
-			RTC_LOG(WARNING) << "Received unknown message. " << message;
-			return;
-		}
-		std::string janus_str;
-		std::string json_object;
-		Json::Value janus_value;
-		Json::Value janus_session_value;
-
-		rtc::GetValueFromJsonObject(jmessage, "data",
-			&janus_value);
-		rtc::GetValueFromJsonObject(janus_value, "id",
-			&janus_session_value);
-		std::string sessionId_str=rtc::JsonValueToString(janus_session_value);
-		m_SessionId = std::stoll(sessionId_str);
+	jt->Success = [=](int handle_id,std::string message) mutable {		
+		list<string> sessionList = {"data","id" };
+		m_SessionId = OptLLInt(message, sessionList);
 		//lauch the timer for keep alive breakheart
 		//Then Create the handle
-		CreateHandle();
+		CreateHandle("janus.plugin.echotest",0,"pcg");
 	};
 
 	jt->Error = [=](std::string code, std::string reason) {
@@ -474,25 +472,8 @@ void ConductorWs::CreateHandle() {
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
 	jt->Success = [=](int handle_id, std::string message) {
-		//parse json
-		Json::Reader reader;
-		Json::Value jmessage;
-		if (!reader.parse(message, jmessage)) {
-			RTC_LOG(WARNING) << "Received unknown message. " << message;
-			return;
-		}
-		std::string janus_str;
-		std::string json_object;
-		Json::Value janus_value;
-		Json::Value janus_handle_value;
-
-		rtc::GetValueFromJsonObject(jmessage, "data",
-			&janus_value);
-		rtc::GetValueFromJsonObject(janus_value, "id",
-			&janus_handle_value);
-		std::string handleId_str = rtc::JsonValueToString(janus_handle_value);
-		m_HandleId = std::stoll(handleId_str);
-
+		list<string> handleList = { "data","id" };
+		m_HandleId = OptLLInt(message, handleList);
 		JoinRoom("",m_HandleId, 0);//TODO feedid means nothing in echotest,else?
 	};
 
@@ -521,31 +502,14 @@ void ConductorWs::CreateHandle(std::string pluginName, long long int feedId, std
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
 	jt->Success = [&](int handle_id, std::string message) {
-		//parse json
-		Json::Reader reader;
-		Json::Value jmessage;
-		if (!reader.parse(message, jmessage)) {
-			RTC_LOG(WARNING) << "Received unknown message. " << message;
-			return;
-		}
-		std::string janus_str;
-		std::string json_object;
-		Json::Value janus_value;
-		Json::Value janus_handle_value;
-
-		rtc::GetValueFromJsonObject(jmessage, "data",
-			&janus_value);
-		rtc::GetValueFromJsonObject(janus_value, "id",
-			&janus_handle_value);
-		std::string handleId_str = rtc::JsonValueToString(janus_handle_value);
-		m_HandleId = std::stoll(handleId_str);
+		list<string> handleList = { "data","id" };
+		m_HandleId = OptLLInt(message, handleList);
 		//add handle to the map
 		std::shared_ptr<JanusHandle> jh(new JanusHandle());
 		jh->handleId = m_HandleId;
 		jh->display = display;
 		jh->feedId = feedId;
 		m_handleMap[m_HandleId] = jh;
-
 		JoinRoom(pluginName,m_HandleId, feedId);//TODO feedid means nothing in echotest,else?
 	};
 
@@ -576,27 +540,28 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 	jt->transactionId = transactionID;
 
 	jt->Event = [=](std::string message) {
-		//parse json
-		Json::Reader reader;
-		Json::Value jmessage;
-		if (!reader.parse(message, jmessage)) {
-			RTC_LOG(WARNING) << "Received unknown message. " << message;
-			return;
+		//get sender
+		list<string> senderList = { "sender" };
+		long long sender = OptLLInt(message, senderList);
+		//get room
+		list<string> resultList = { "plugindata","data","result" };
+		list<string> roomList = { "plugindata","data","videoroom" };
+		
+		//echotest return result=ok
+		std::string result = OptString(message, resultList);
+		if (result == "ok") {
+			RTC_LOG(WARNING) << "echotest negotiation ok! ";
 		}
-		std::string janus_str;
-		std::string json_object;
-		Json::Value janus_value;
-		Json::Value janus_plugin;
-		std::string nego_result;
-
-		rtc::GetValueFromJsonObject(jmessage, "plugindata",
-			&janus_plugin);
-		rtc::GetValueFromJsonObject(janus_plugin, "data",
-			&janus_value);
-		rtc::GetStringFromJsonObject(janus_value, "result",
-			&nego_result);
-		if (nego_result != "ok") {
-			RTC_LOG(WARNING) << "negotiation failed! ";
+		
+		std::string videoroom= OptString(message, roomList);
+		//joined the room as a publisher
+		if (videoroom == "joined") {
+			main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
+		}
+		//joined the room as a subscriber
+		if (videoroom == "attached") {
+			//parse the remote sdp
+			//events.onRemoteJsep(handleId, jsep);
 		}
 	};
 
@@ -634,11 +599,12 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		jmessage["transaction"] = transactionID;
 		jmessage["session_id"] = m_SessionId;
 		jmessage["handle_id"] = m_HandleId;
+		client_->SendToJanus(writer.write(jmessage));
+		//shift the process to UI thread to createOffer
+		main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
 	}
 	
-	client_->SendToJanus(writer.write(jmessage));
-	//shift the process to UI thread to createOffer
-	main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
+	
 }
 
 void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::string sdp_desc) {
@@ -863,6 +829,57 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 			}
 		}
 	}
+}
+
+//json handle functions
+
+//jmessage:the json to be parse
+//keylist: the recursive key from parent to sub
+std::string OptString(std::string message, list<string> keyList) {
+	//parse json
+	Json::Reader reader;
+	Json::Value jmessage;
+	if (!reader.parse(message, jmessage)) {
+		RTC_LOG(WARNING) << "Received unknown message. " << message;
+		return std::string("");//FIXME should return by another param with type enum
+	}
+	Json::Value jvalue=jmessage;
+	Json::Value jvalue2;
+	for (auto key: keyList) {
+		if (rtc::GetValueFromJsonObject(jvalue, key,
+			&jvalue2)) {
+			jvalue = jvalue2;
+		}
+		else {
+			return std::string("");
+		}
+	}
+	std::string tmp_str = rtc::JsonValueToString(jvalue);
+	return tmp_str;
+}
+//jmessage:the json to be parse
+//keylist: the recursive key from parent to sub
+long long int OptLLInt(std::string message, list<string> keyList) {
+	//parse json
+	Json::Reader reader;
+	Json::Value jmessage;
+	if (!reader.parse(message, jmessage)) {
+		RTC_LOG(WARNING) << "Received unknown message. " << message;
+		return 0;//FIXME should return by another param with type enum
+	}
+	Json::Value jvalue = jmessage;
+	Json::Value jvalue2;
+	for (auto key : keyList) {
+		if (rtc::GetValueFromJsonObject(jvalue, key,
+			&jvalue2)) {
+			jvalue = jvalue2;
+		}
+		else {
+			return 0;
+		}
+	}
+	std::string tmp_str = rtc::JsonValueToString(jvalue);
+	return std::stoll(tmp_str);
 }
 
 
