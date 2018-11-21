@@ -18,7 +18,7 @@ public:
 	}
 	virtual void OnSuccess() { RTC_LOG(INFO) << __FUNCTION__; }
 	virtual void OnFailure(webrtc::RTCError error) {
-		RTC_LOG(INFO) << __FUNCTION__ << " " << ToString(error.type()) << ": "
+		RTC_LOG(INFO) << __FUNCTION__ << " " << ToString(error.type()) << ": "      
 			<< error.message();
 	}
 };
@@ -32,6 +32,18 @@ PeerConnection::~PeerConnection()
 {
 }
 
+void PeerConnection::RegisterObserver(PeerConnectionCallback* callback) {
+	m_pConductorCallback = callback;
+}
+
+void PeerConnection::SetHandleId(long long int handleId) {
+	m_HandleId = handleId;
+}
+
+long long int PeerConnection::GetHandleId() {
+	return m_HandleId;
+}
+
 //CreateSessionDescriptionObserver implementation.
 void PeerConnection::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
 	peer_connection_->SetLocalDescription(
@@ -39,7 +51,8 @@ void PeerConnection::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
 
 	std::string sdp;
 	desc->ToString(&sdp);
-	SendOffer(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
+	m_pConductorCallback->PCSendSDP(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
+	//SendOffer(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
 }
 
 void PeerConnection::OnFailure(webrtc::RTCError error) {
@@ -55,24 +68,29 @@ void PeerConnection::OnAddTrack(
 	const std::vector<rtc::scoped_refptr<webrtc::MediaStreamInterface>>&
 	streams) {
 	RTC_LOG(INFO) << __FUNCTION__ << " " << receiver->id();
-	main_wnd_->QueueUIThreadCallback(NEW_TRACK_ADDED,
+	m_pConductorCallback->PCQueueUIThreadCallback(NEW_TRACK_ADDED,
 		receiver->track().release());
+	/*main_wnd_->QueueUIThreadCallback(NEW_TRACK_ADDED,
+		receiver->track().release());*/
 }
 
 void PeerConnection::OnRemoveTrack(
 	rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver) {
 	RTC_LOG(INFO) << __FUNCTION__ << " " << receiver->id();
-	main_wnd_->QueueUIThreadCallback(TRACK_REMOVED, receiver->track().release());
+	m_pConductorCallback->PCQueueUIThreadCallback(TRACK_REMOVED, receiver->track().release());
+	//main_wnd_->QueueUIThreadCallback(TRACK_REMOVED, receiver->track().release());
 }
 
 void PeerConnection::OnIceCandidate(const webrtc::IceCandidateInterface* candidate) {
 	RTC_LOG(INFO) << __FUNCTION__ << " " << candidate->sdp_mline_index();
 
 	if (candidate) {
-		trickleCandidate(0, candidate);
+		m_pConductorCallback->PCTrickleCandidate(m_HandleId, candidate);
+		//trickleCandidate(0, candidate);
 	}
 	else {
-		trickleCandidateComplete(0);
+		m_pConductorCallback->PCTrickleCandidateComplete(m_HandleId);
+		//trickleCandidateComplete(0);
 	}
 }
 

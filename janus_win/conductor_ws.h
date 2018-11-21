@@ -20,6 +20,8 @@
 #include "rtc_base/json.h"
 #include "rtc_base/logging.h"
 
+#include "peer_connection.h"
+
 using namespace std;
 
 namespace webrtc {
@@ -34,17 +36,9 @@ class ConductorWs : public sigslot::has_slots<>,
 	public webrtc::PeerConnectionObserver,
 	public webrtc::CreateSessionDescriptionObserver,
 	public PeerConnectionWsClientObserver,
-	public MainWndCallback {
+	public MainWndCallback,
+    public PeerConnectionCallback {
 public:
-	enum CallbackID {
-		MEDIA_CHANNELS_INITIALIZED = 1,
-		PEER_CONNECTION_CLOSED,
-		SEND_MESSAGE_TO_PEER,
-		NEW_TRACK_ADDED,
-		TRACK_REMOVED,
-		CREATE_OFFER,//added by pcg
-		SET_REMOTE_SDP//added by pcg
-	};
 
 	ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd);
 

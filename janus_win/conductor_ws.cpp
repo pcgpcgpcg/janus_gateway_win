@@ -127,8 +127,11 @@ bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 	bitrateParam.min_bitrate_bps = absl::optional<int>(128000);
 	bitrateParam.current_bitrate_bps = absl::optional<int>(256000);
 	bitrateParam.max_bitrate_bps = absl::optional<int>(512000);
-	
 
+	PeerConnection *p = new PeerConnection();
+	
+	std::shared_ptr<PeerConnection> peer_connection(new PeerConnection());
+	//rtc::scoped_refptr<PeerConnection> peer_connection(new PeerConnection());
 	m_peer_connection_map[handleId] = peer_connection_factory_->CreatePeerConnection(
 		config, nullptr, nullptr, this);
 	//set max/min bitrate
