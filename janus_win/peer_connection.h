@@ -74,10 +74,9 @@ protected:
 	// CreateSessionDescriptionObserver implementation.
 	void OnSuccess(webrtc::SessionDescriptionInterface* desc) override;
 	void OnFailure(webrtc::RTCError error) override;
-	void AddRef() {};
-	RefCountReleaseStatus Release();
 public:
 	rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
+	bool b_publisher_=false;//pub or sub
 private:
 	PeerConnectionCallback *m_pConductorCallback=NULL;
 	long long int m_HandleId=0;//coresponding to the janus handleId

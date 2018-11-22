@@ -59,13 +59,17 @@ ConductorWs::~ConductorWs() {
 }
 
 bool ConductorWs::connection_active(long long int handleId) const {
-	return m_peer_connection_map.at[handleId] != nullptr;
+	return m_peer_connection_map.at(handleId)->peer_connection_ != nullptr;
 	//return peer_connection_ != nullptr;
 }
 
+//called by main_wnd receive onClose message
 void ConductorWs::Close() {
-	DeletePeerConnection();
+	for (auto &key : m_peer_connection_map) {
+		DeletePeerConnection(key.first);
+	}
 }
+	
 
 bool ConductorWs::InitializePeerConnection(long long int handleId,bool bPublisher) {
 	RTC_DCHECK(!peer_connection_factory_);
@@ -73,9 +77,6 @@ bool ConductorWs::InitializePeerConnection(long long int handleId,bool bPublishe
 		//existing
 		return false;
 	}
-
-	rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
-	m_peer_connection_map[handleId] = peer_connection_;
 
 	peer_connection_factory_ = webrtc::CreatePeerConnectionFactory(
 		nullptr /* network_thread */, nullptr /* worker_thread */,
@@ -101,8 +102,9 @@ bool ConductorWs::InitializePeerConnection(long long int handleId,bool bPublishe
 	if (bPublisher) {
 		AddTracks(handleId);
 	}
+	m_peer_connection_map[handleId]->b_publisher_ = true;
 
-	return peer_connection_ != nullptr;
+	return m_peer_connection_map[handleId]->peer_connection_ != nullptr;
 }
 
 bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
@@ -128,22 +130,25 @@ bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 	bitrateParam.current_bitrate_bps = absl::optional<int>(256000);
 	bitrateParam.max_bitrate_bps = absl::optional<int>(512000);
 
-	PeerConnection *p = new PeerConnection();
-	
-	std::shared_ptr<PeerConnection> peer_connection(new PeerConnection());
-	//rtc::scoped_refptr<PeerConnection> peer_connection(new PeerConnection());
-	m_peer_connection_map[handleId] = peer_connection_factory_->CreatePeerConnection(
+	rtc::scoped_refptr<PeerConnection> peer_connection(
+		new rtc::RefCountedObject<PeerConnection>());
+
+	peer_connection->peer_connection_= peer_connection_factory_->CreatePeerConnection(
 		config, nullptr, nullptr, this);
 	//set max/min bitrate
-	m_peer_connection_map[handleId]->SetBitrate(bitrateParam);
+	peer_connection->peer_connection_->SetBitrate(bitrateParam);
+	//add to the map
+	m_peer_connection_map[handleId] = peer_connection;
 
-	return m_peer_connection_map[handleId] != nullptr;
+	return m_peer_connection_map[handleId]->peer_connection_ != nullptr;
 }
 
 void ConductorWs::DeletePeerConnection(long long int handleId) {
-	main_wnd_->StopLocalRenderer();
+	if (m_peer_connection_map[handleId]->b_publisher_) {
+		main_wnd_->StopLocalRenderer();
+	}
 	main_wnd_->StopRemoteRenderer();
-	m_peer_connection_map[handleId] = nullptr;
+	m_peer_connection_map[handleId]->peer_connection_ = nullptr;
 	//peer_connection_factory_ = nullptr; //TODO should destroy before quit
 }
 
@@ -155,35 +160,23 @@ void ConductorWs::EnsureStreamingUI() {
 }
 
 //
-// PeerConnectionObserver implementation.
+// peerconnectionCallback implementation.
 //
 
-void ConductorWs::OnAddTrack(
-	rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver,
-	const std::vector<rtc::scoped_refptr<webrtc::MediaStreamInterface>>&
-	streams) {
-	RTC_LOG(INFO) << __FUNCTION__ << " " << receiver->id();
-	main_wnd_->QueueUIThreadCallback(NEW_TRACK_ADDED,
-		receiver->track().release());
+void ConductorWs::PCSendSDP(long long int handleId, std::string sdpType, std::string sdp) {
+	SendOffer(handleId, sdpType, sdp);
 }
 
-void ConductorWs::OnRemoveTrack(
-	rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver) {
-	RTC_LOG(INFO) << __FUNCTION__ << " " << receiver->id();
-	main_wnd_->QueueUIThreadCallback(TRACK_REMOVED, receiver->track().release());
+void ConductorWs::PCQueueUIThreadCallback(int msg_id, void* data){
+	main_wnd_->QueueUIThreadCallback(msg_id,
+		data);
 }
-
-void ConductorWs::OnIceCandidate(const webrtc::IceCandidateInterface* candidate) {
-	RTC_LOG(INFO) << __FUNCTION__ << " " << candidate->sdp_mline_index();
-
-	if (candidate) {
-		trickleCandidate(0, candidate);
-	}
-	else {
-		trickleCandidateComplete(0);
-	}
+void ConductorWs::PCTrickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate) {
+	trickleCandidate(handleId, candidate);
 }
-
+void ConductorWs::PCTrickleCandidateComplete(long long int handleId) {
+	trickleCandidateComplete(handleId);
+}
 //
 // PeerConnectionClientObserver implementation.
 //
@@ -201,7 +194,9 @@ void ConductorWs::OnJanusDisconnected() {
 void ConductorWs::OnDisconnected() {
 	RTC_LOG(INFO) << __FUNCTION__;
 
-	DeletePeerConnection();
+	for (auto &key : m_peer_connection_map) {
+		DeletePeerConnection(key.first);
+	}
 
 	if (main_wnd_->IsWindow())
 		main_wnd_->SwitchToConnectUI();
@@ -282,7 +277,7 @@ std::unique_ptr<cricket::VideoCapturer> ConductorWs::OpenVideoCaptureDevice() {
 }
 
 void ConductorWs::AddTracks(long long int handleId) {
-	if (!m_peer_connection_map[handleId]->GetSenders().empty()) {
+	if (!m_peer_connection_map[handleId]->peer_connection_->GetSenders().empty()) {
 		return;  // Already added tracks.
 	}
 
@@ -290,7 +285,7 @@ void ConductorWs::AddTracks(long long int handleId) {
 		peer_connection_factory_->CreateAudioTrack(
 			kAudioLabel, peer_connection_factory_->CreateAudioSource(
 				cricket::AudioOptions())));
-	auto result_or_error = m_peer_connection_map[handleId]->AddTrack(audio_track, { kStreamId });
+	auto result_or_error = m_peer_connection_map[handleId]->peer_connection_->AddTrack(audio_track, { kStreamId });
 	if (!result_or_error.ok()) {
 		RTC_LOG(LS_ERROR) << "Failed to add audio track to PeerConnection: "
 			<< result_or_error.error().message();
@@ -322,7 +317,7 @@ void ConductorWs::AddTracks(long long int handleId) {
 					std::move(video_device), nullptr)));
 		main_wnd_->StartLocalRenderer(video_track_);
 
-		result_or_error = m_peer_connection_map[handleId]->AddTrack(video_track_, { kStreamId });
+		result_or_error = m_peer_connection_map[handleId]->peer_connection_->AddTrack(video_track_, { kStreamId });
 		if (!result_or_error.ok()) {
 			RTC_LOG(LS_ERROR) << "Failed to add video track to PeerConnection: "
 				<< result_or_error.error().message();
@@ -337,8 +332,11 @@ void ConductorWs::AddTracks(long long int handleId) {
 
 void ConductorWs::DisconnectFromCurrentPeer() {
 	RTC_LOG(INFO) << __FUNCTION__;
-	if (peer_connection_.get()) {
+	/*if (peer_connection_.get()) {
 		DeletePeerConnection();
+	}*/
+	for (auto &key : m_peer_connection_map) {
+		DeletePeerConnection(key.first);
 	}
 
 	if (main_wnd_->IsWindow())
@@ -349,8 +347,10 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 	switch (msg_id) {
 	case PEER_CONNECTION_CLOSED:
 		RTC_LOG(INFO) << "PEER_CONNECTION_CLOSED";
-		DeletePeerConnection();
-
+		for (auto &key : m_peer_connection_map) {
+			DeletePeerConnection(key.first);
+		}
+		
 		if (main_wnd_->IsWindow()) {
 				main_wnd_->SwitchToConnectUI();
 		}
@@ -545,7 +545,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 	jt->Event = [=](std::string message) {
 		//get sender
 		list<string> senderList = { "sender" };
-		long long sender = OptLLInt(message, senderList);
+		long long int sender = OptLLInt(message, senderList);
 		//get room
 		list<string> resultList = { "plugindata","data","result" };
 		list<string> roomList = { "plugindata","data","videoroom" };

@@ -33,7 +33,6 @@ namespace cricket {
 }  // namespace cricket
 
 class ConductorWs : public sigslot::has_slots<>,
-	public webrtc::PeerConnectionObserver,
 	public webrtc::CreateSessionDescriptionObserver,
 	public PeerConnectionWsClientObserver,
 	public MainWndCallback,
@@ -54,28 +53,6 @@ protected:
 	void EnsureStreamingUI();
 	void AddTracks(long long int handleId);
 	std::unique_ptr<cricket::VideoCapturer> OpenVideoCaptureDevice();
-
-	//
-	// PeerConnectionObserver implementation.
-	//
-
-	void OnSignalingChange(
-		webrtc::PeerConnectionInterface::SignalingState new_state) override {};
-	void OnAddTrack(
-		rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver,
-		const std::vector<rtc::scoped_refptr<webrtc::MediaStreamInterface>>&
-		streams) override;
-	void OnRemoveTrack(
-		rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver) override;
-	void OnDataChannel(
-		rtc::scoped_refptr<webrtc::DataChannelInterface> channel) override {}
-	void OnRenegotiationNeeded() override {}
-	void OnIceConnectionChange(
-		webrtc::PeerConnectionInterface::IceConnectionState new_state) override {};
-	void OnIceGatheringChange(
-		webrtc::PeerConnectionInterface::IceGatheringState new_state) override {};
-	void OnIceCandidate(const webrtc::IceCandidateInterface* candidate) override;
-	void OnIceConnectionReceivingChange(bool receiving) override {}
 
 	//
 	// PeerConnectionClientObserver implementation.
@@ -117,13 +94,18 @@ protected:
 	void OnSuccess(webrtc::SessionDescriptionInterface* desc) override;
 	void OnFailure(webrtc::RTCError error) override;
 
+	//peerconnectionCallback implementation
+	void PCSendSDP(long long int handleId, std::string sdpType, std::string sdp);
+	void PCQueueUIThreadCallback(int msg_id, void* data);
+	void PCTrickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate);
+	 void PCTrickleCandidateComplete(long long int handleId);
+
 protected:
 	int peer_id_;
 	bool loopback_;
 	//rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
-	std::map<long long int, rtc::scoped_refptr<webrtc::PeerConnectionInterface>> m_peer_connection_map;
-	rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface>
-		peer_connection_factory_;
+	std::map<long long int, rtc::scoped_refptr<PeerConnection>> m_peer_connection_map;
+	rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_connection_factory_;
 	PeerConnectionWsClient* client_;
 	MainWindow* main_wnd_;
 	std::deque<std::string*> pending_messages_;
