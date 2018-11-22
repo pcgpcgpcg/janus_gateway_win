@@ -101,6 +101,14 @@ void PeerConnection::CreateOffer() {
 		this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
 }
 
+void PeerConnection::CreateSessionSDP(std::string jsep_str) {
+	std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+		webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
+	int a;
+	a = 1;
+}
+
+
 void PeerConnection::SetRemoteDescription(webrtc::SessionDescriptionInterface* session_description) {
 	peer_connection_->SetRemoteDescription(
 		DummySetSessionDescriptionObserver::Create(),

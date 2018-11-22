@@ -103,8 +103,8 @@ bool ConductorWs::InitializePeerConnection(long long int handleId,bool bPublishe
 
 bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 	RTC_DCHECK(peer_connection_factory_);
-	if (m_peer_connection_map.find(handleId) == m_peer_connection_map.end()) {
-		//not existed
+	if (m_peer_connection_map.find(handleId) != m_peer_connection_map.end()) {
+		//existed
 		return false;
 	}
 
@@ -128,10 +128,12 @@ bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 		new rtc::RefCountedObject<PeerConnection>());
 
 	peer_connection->peer_connection_= peer_connection_factory_->CreatePeerConnection(
-		config, nullptr, nullptr, peer_connection.release());
+		config, nullptr, nullptr, peer_connection);
 	//set max/min bitrate
 	peer_connection->peer_connection_->SetBitrate(bitrateParam);
 	//add to the map
+	peer_connection->RegisterObserver(this);
+	peer_connection->SetHandleId(handleId);
 	m_peer_connection_map[handleId] = peer_connection;
 
 	return m_peer_connection_map[handleId]->peer_connection_ != nullptr;
@@ -364,7 +366,7 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 	}
 
 	case CREATE_OFFER: {
-		long long int handleId = *(long long int*)(data);
+		long long int handleId = (long long int)(data);
 		if (InitializePeerConnection(handleId,true)) {
 			m_peer_connection_map[handleId]->CreateOffer();
 		}
@@ -375,9 +377,16 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 	}
 
 	case SET_REMOTE_SDP: {
-		long long int handleId = *(long long int*)(data);
-		auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(data);
-		m_peer_connection_map[handleId]->SetRemoteDescription(session_description);
+		REMOTE_SDP_INFO* pInfo = (REMOTE_SDP_INFO *)(data);
+		long long int handleId = pInfo->handleId;
+		std::string jsep_str = pInfo->jsep_str;
+		m_peer_connection_map[handleId]->CreateSessionSDP(jsep_str);
+		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
+		//auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(data);
+		//auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(pInfo->pInterface);	
+		m_peer_connection_map[handleId]->SetRemoteDescription(session_description.release());
+		//delete pInfo;
 		//TODO fixme suitable here?
 		SendBitrateConstraint(handleId);
 		break;
@@ -446,9 +455,9 @@ void ConductorWs::CreateHandle(std::string pluginName, long long int feedId, std
 	std::string transactionID = RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
-	jt->Success = [&](std::string message) {
+	jt->Success = [=](std::string message) {
 		list<string> handleList = { "data","id" };
-		int handle_id = OptLLInt(message, handleList);
+		long long int handle_id = OptLLInt(message, handleList);
 		//add handle to the map
 		std::shared_ptr<JanusHandle> jh(new JanusHandle());
 		jh->handleId = handle_id;
@@ -546,7 +555,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		jmessage["handle_id"] = handleId;
 		client_->SendToJanus(writer.write(jmessage));
 		//shift the process to UI thread to createOffer
-		main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
+		main_wnd_->QueueUIThreadCallback(CREATE_OFFER, (void*)(handleId));
 	}
 	
 	
@@ -558,27 +567,19 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 	jt->transactionId = transactionID;
 
 	jt->Event = [=](std::string message) {
-		//parse json
-		Json::Reader reader;
-		Json::Value jmessage;
-		if (!reader.parse(message, jmessage)) {
-			RTC_LOG(WARNING) << "Received unknown message. " << message;
-			return;
-		}
-		std::string janus_str;
-		std::string json_object;
-		Json::Value janus_value;
-		std::string jsep_str;
-		//see if has remote jsep
-		if (rtc::GetValueFromJsonObject(jmessage, "jsep",
-			&janus_value)) {
-			if (rtc::GetStringFromJsonObject(janus_value, "sdp",
-				&jsep_str)){
-				std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-					webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
-				main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, session_description.release());
-			}
-		}
+		list<string> resultList = { "jsep","sdp" };
+		std::string jsep_str=OptString(message, resultList);
+		REMOTE_SDP_INFO* pInfo = new REMOTE_SDP_INFO;
+		pInfo->handleId = handleId;
+		pInfo->jsep_str = jsep_str;
+		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
+		main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, pInfo);
+	
+		/*REMOTE_SDP_INFO *rsInfo=new REMOTE_SDP_INFO;
+		rsInfo->handleId = handleId;
+		rsInfo->pInterface = session_description.get();
+		main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, (void*)(rsInfo));*/
 	};
 
 	m_transactionMap[transactionID] = jt;

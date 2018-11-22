@@ -32,7 +32,13 @@ namespace cricket {
 	class VideoRenderer;
 }  // namespace cricket
 
+struct REMOTE_SDP_INFO {
+	long long int handleId;
+	std::string jsep_str;
+};
+
 class ConductorWs : public sigslot::has_slots<>,
+	public rtc::RefCountInterface,
 	public PeerConnectionWsClientObserver,
 	public MainWndCallback,
     public PeerConnectionCallback {

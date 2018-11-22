@@ -52,6 +52,7 @@ public:
 	void SetHandleId(long long int handleId);
 	long long int GetHandleId();
 	void CreateOffer();
+	void CreateSessionSDP(std::string jsep_str);
 	void SetRemoteDescription(webrtc::SessionDescriptionInterface* session_description);
 protected:
 	// PeerConnectionObserver implementation.
