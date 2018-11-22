@@ -33,7 +33,6 @@ namespace cricket {
 }  // namespace cricket
 
 class ConductorWs : public sigslot::has_slots<>,
-	public webrtc::CreateSessionDescriptionObserver,
 	public PeerConnectionWsClientObserver,
 	public MainWndCallback,
     public PeerConnectionCallback {
@@ -42,6 +41,8 @@ public:
 	ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd);
 
 	bool connection_active(long long int handleId) const;
+
+	bool connection_active() const;
 
 	void Close() override;
 
@@ -90,10 +91,6 @@ protected:
 
 	void UIThreadCallback(int msg_id, void* data) override;
 
-	// CreateSessionDescriptionObserver implementation.
-	void OnSuccess(webrtc::SessionDescriptionInterface* desc) override;
-	void OnFailure(webrtc::RTCError error) override;
-
 	//peerconnectionCallback implementation
 	void PCSendSDP(long long int handleId, std::string sdpType, std::string sdp);
 	void PCQueueUIThreadCallback(int msg_id, void* data);
@@ -113,7 +110,6 @@ protected:
 	std::map<std::string, std::shared_ptr<JanusTransaction>> m_transactionMap;
 	std::map<long long int, std::shared_ptr<JanusHandle>> m_handleMap;
 	long long int m_SessionId=0LL;
-	long long int m_HandleId=0LL;
 
 	private:
 		void KeepAlive();
@@ -124,7 +120,7 @@ protected:
 		void SendOffer(long long int handleId, std::string sdp_type, std::string sdp_desc);
 		void trickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate);
 		void trickleCandidateComplete(long long int handleId);
-		void SendBitrateConstraint();
+		void SendBitrateConstraint(long long int handleId);
 		public:
 			void* this_ptr;
 };

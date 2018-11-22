@@ -94,3 +94,16 @@ void PeerConnection::OnIceCandidate(const webrtc::IceCandidateInterface* candida
 	}
 }
 
+//peer connection interface implementation
+void PeerConnection::CreateOffer() {
+	//TODO RTCOfferAnswerOptions should set as a option
+	peer_connection_->CreateOffer(
+		this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+}
+
+void PeerConnection::SetRemoteDescription(webrtc::SessionDescriptionInterface* session_description) {
+	peer_connection_->SetRemoteDescription(
+		DummySetSessionDescriptionObserver::Create(),
+		session_description);
+}
+

@@ -30,18 +30,7 @@ const char kJanusOptName[] = "janus";
 std::string OptString(std::string message, list<string> key);
 long long int OptLLInt(std::string message, list<string> key);
 
-class DummySetSessionDescriptionObserver
-	: public webrtc::SetSessionDescriptionObserver {
-public:
-	static DummySetSessionDescriptionObserver* Create() {
-		return new rtc::RefCountedObject<DummySetSessionDescriptionObserver>();
-	}
-	virtual void OnSuccess() { RTC_LOG(INFO) << __FUNCTION__; }
-	virtual void OnFailure(webrtc::RTCError error) {
-		RTC_LOG(INFO) << __FUNCTION__ << " " << ToString(error.type()) << ": "
-			<< error.message();
-	}
-};
+
 
 ConductorWs::ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd)
 	: peer_id_(-1), loopback_(false), client_(client), main_wnd_(main_wnd) {
@@ -60,6 +49,11 @@ ConductorWs::~ConductorWs() {
 
 bool ConductorWs::connection_active(long long int handleId) const {
 	return m_peer_connection_map.at(handleId)->peer_connection_ != nullptr;
+	//return peer_connection_ != nullptr;
+}
+
+bool ConductorWs::connection_active() const {
+	return m_peer_connection_map.size() > 0;
 	//return peer_connection_ != nullptr;
 }
 
@@ -134,7 +128,7 @@ bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 		new rtc::RefCountedObject<PeerConnection>());
 
 	peer_connection->peer_connection_= peer_connection_factory_->CreatePeerConnection(
-		config, nullptr, nullptr, this);
+		config, nullptr, nullptr, peer_connection.release());
 	//set max/min bitrate
 	peer_connection->peer_connection_->SetBitrate(bitrateParam);
 	//add to the map
@@ -232,13 +226,6 @@ void ConductorWs::StartLogin(const std::string& server, int port) {
 	server_ = server;
 	auto ws_server = std::string("ws://") + server + std::string(":") + std::to_string(port);
 
-	/*if (InitializePeerConnection()) {
-		peer_connection_->CreateOffer(
-			this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
-	}
-	else {
-		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
-	}*/
 	client_->Connect(ws_server, "1111");
 }
 
@@ -377,9 +364,9 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 	}
 
 	case CREATE_OFFER: {
-		if (InitializePeerConnection()) {
-			peer_connection_->CreateOffer(
-				this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
+		long long int handleId = *(long long int*)(data);
+		if (InitializePeerConnection(handleId,true)) {
+			m_peer_connection_map[handleId]->CreateOffer();
 		}
 		else {
 			main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
@@ -388,12 +375,11 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 	}
 
 	case SET_REMOTE_SDP: {
+		long long int handleId = *(long long int*)(data);
 		auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(data);
-		peer_connection_->SetRemoteDescription(
-			DummySetSessionDescriptionObserver::Create(),
-			session_description);
+		m_peer_connection_map[handleId]->SetRemoteDescription(session_description);
 		//TODO fixme suitable here?
-		SendBitrateConstraint();
+		SendBitrateConstraint(handleId);
 		break;
 	}
 
@@ -401,20 +387,6 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		RTC_NOTREACHED();
 		break;
 	}
-}
-
-//override CreateSessionDescriptionObserver::OnSuccess
-void ConductorWs::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
-	peer_connection_->SetLocalDescription(
-		DummySetSessionDescriptionObserver::Create(), desc);
-
-	std::string sdp;
-	desc->ToString(&sdp);
-	SendOffer(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
-}
-
-void ConductorWs::OnFailure(webrtc::RTCError error) {
-	RTC_LOG(LERROR) << ToString(error.type()) << ": " << error.message();
 }
 
 /*----------------------------------------------------------------*/
@@ -448,7 +420,7 @@ void ConductorWs::CreateSession() {
 	jt->transactionId = transactionID;
 
 	//TODO Is it possible for lamda expression here?
-	jt->Success = [=](int handle_id,std::string message) mutable {		
+	jt->Success = [=](std::string message) mutable {		
 		list<string> sessionList = {"data","id" };
 		m_SessionId = OptLLInt(message, sessionList);
 		//lauch the timer for keep alive breakheart
@@ -466,36 +438,6 @@ void ConductorWs::CreateSession() {
 	Json::Value jmessage;
 	jmessage["janus"] = "create";
 	jmessage["transaction"] = transactionID;
-	//SendMessage(writer.write(jmessage));
-	client_->SendToJanus(writer.write(jmessage));
-}
-
-void ConductorWs::CreateHandle() {
-	std::string transactionID = RandomString(12);
-	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
-	jt->transactionId = transactionID;
-	jt->Success = [=](int handle_id, std::string message) {
-		list<string> handleList = { "data","id" };
-		m_HandleId = OptLLInt(message, handleList);
-		JoinRoom("",m_HandleId, 0);//TODO feedid means nothing in echotest,else?
-	};
-
-	jt->Event = [=](std::string message) {
-		
-	};
-
-	jt->Error = [=](std::string, std::string) {
-		RTC_LOG(INFO)<<"CreateHandle error:";
-	};
-
-	m_transactionMap[transactionID] = jt;
-
-	Json::StyledWriter writer;
-	Json::Value jmessage;
-	jmessage["janus"] = "attach";
-	jmessage["plugin"] = "janus.plugin.echotest";
-	jmessage["transaction"] = transactionID;
-	jmessage["session_id"] = m_SessionId;
 	client_->SendToJanus(writer.write(jmessage));
 }
 
@@ -504,16 +446,16 @@ void ConductorWs::CreateHandle(std::string pluginName, long long int feedId, std
 	std::string transactionID = RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
-	jt->Success = [&](int handle_id, std::string message) {
+	jt->Success = [&](std::string message) {
 		list<string> handleList = { "data","id" };
-		m_HandleId = OptLLInt(message, handleList);
+		int handle_id = OptLLInt(message, handleList);
 		//add handle to the map
 		std::shared_ptr<JanusHandle> jh(new JanusHandle());
-		jh->handleId = m_HandleId;
+		jh->handleId = handle_id;
 		jh->display = display;
 		jh->feedId = feedId;
-		m_handleMap[m_HandleId] = jh;
-		JoinRoom(pluginName,m_HandleId, feedId);//TODO feedid means nothing in echotest,else?
+		m_handleMap[handle_id] = jh;
+		JoinRoom(pluginName, handle_id, feedId);//TODO feedid means nothing in echotest,else?
 	};
 
 	jt->Event = [=](std::string message) {
@@ -559,7 +501,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		std::string videoroom= OptString(message, roomList);
 		//joined the room as a publisher
 		if (videoroom == "joined") {
-			main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
+			main_wnd_->QueueUIThreadCallback(CREATE_OFFER, (void*)(&handleId));
 		}
 		//joined the room as a subscriber
 		if (videoroom == "attached") {
@@ -589,7 +531,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		jmessage["janus"] = "message";
 		jmessage["transaction"] = transactionID;
 		jmessage["session_id"] = m_SessionId;
-		jmessage["handle_id"] = m_HandleId;
+		jmessage["handle_id"] = handleId;
 	}
 	else if (pluginName == "janus.plugin.audiobridge") {
 
@@ -601,7 +543,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		jmessage["janus"] = "message";
 		jmessage["transaction"] = transactionID;
 		jmessage["session_id"] = m_SessionId;
-		jmessage["handle_id"] = m_HandleId;
+		jmessage["handle_id"] = handleId;
 		client_->SendToJanus(writer.write(jmessage));
 		//shift the process to UI thread to createOffer
 		main_wnd_->QueueUIThreadCallback(CREATE_OFFER, NULL);
@@ -658,7 +600,7 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 	jmessage["janus"] = "message";
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
-	jmessage["handle_id"] = m_HandleId;
+	jmessage["handle_id"] = handleId;
 	//beacause the thread is on UI,so shift thread to ws thread
 	client_->SendToJanusAsync(writer.write(jmessage));
 }
@@ -683,7 +625,7 @@ void ConductorWs::trickleCandidate(long long int handleId, const webrtc::IceCand
 	jmessage["candidate"] = jcandidate;	
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
-	jmessage["handle_id"] = m_HandleId;
+	jmessage["handle_id"] = handleId;
 	client_->SendToJanusAsync(writer.write(jmessage));
 }
 
@@ -699,11 +641,11 @@ void ConductorWs::trickleCandidateComplete(long long int handleId) {
 	jmessage["candidate"] = jcandidate;
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
-	jmessage["handle_id"] = m_HandleId;
+	jmessage["handle_id"] = handleId;
 	client_->SendToJanusAsync(writer.write(jmessage));
 }
 
-void ConductorWs::SendBitrateConstraint() {
+void ConductorWs::SendBitrateConstraint(long long int handleId) {
 	std::string transactionID = RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
@@ -748,7 +690,7 @@ void ConductorWs::SendBitrateConstraint() {
 	jmessage["body"] = jbody;
 	jmessage["transaction"] = transactionID;
 	jmessage["session_id"] = m_SessionId;
-	jmessage["handle_id"] = m_HandleId;
+	jmessage["handle_id"] = handleId;
 	client_->SendToJanusAsync(writer.write(jmessage));
 }
 
@@ -782,7 +724,7 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 			std::shared_ptr<JanusTransaction> jt = m_transactionMap.at(janus_str);
 			//call signal
 			if (jt) {
-				jt->Success(0, message);//handle_id not ready yet
+				jt->Success(message);//handle_id not ready yet
 			}
 			m_transactionMap.erase(janus_str);
 		}

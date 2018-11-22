@@ -51,6 +51,8 @@ public:
 	void RegisterObserver(PeerConnectionCallback* callback);
 	void SetHandleId(long long int handleId);
 	long long int GetHandleId();
+	void CreateOffer();
+	void SetRemoteDescription(webrtc::SessionDescriptionInterface* session_description);
 protected:
 	// PeerConnectionObserver implementation.
 	void OnSignalingChange(
