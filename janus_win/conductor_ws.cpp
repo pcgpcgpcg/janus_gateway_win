@@ -29,6 +29,7 @@ const char kJanusOptName[] = "janus";
 //json handle function
 std::string OptString(std::string message, list<string> key);
 long long int OptLLInt(std::string message, list<string> key);
+Json::Value optJSONValue(std::string message, list<string> keyList);
 
 
 
@@ -434,7 +435,7 @@ void ConductorWs::CreateSession() {
 		m_SessionId = OptLLInt(message, sessionList);
 		//lauch the timer for keep alive breakheart
 		//Then Create the handle
-		CreateHandle("janus.plugin.echotest",0,"pcg");
+		CreateHandle("janus.plugin.videoroom",0,"pcg");
 	};
 
 	jt->Error = [=](std::string code, std::string reason) {
@@ -500,6 +501,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		//get room
 		list<string> resultList = { "plugindata","data","result" };
 		list<string> roomList = { "plugindata","data","videoroom" };
+		list<string> publisherList = { "plugindata","data","videoroom" };
 		
 		//echotest return result=ok
 		std::string result = OptString(message, resultList);
@@ -511,6 +513,8 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		//joined the room as a publisher
 		if (videoroom == "joined") {
 			main_wnd_->QueueUIThreadCallback(CREATE_OFFER, (void*)(&handleId));
+			//for each search every publisher and create handle to attach them
+			
 		}
 		//joined the room as a subscriber
 		if (videoroom == "attached") {
@@ -567,27 +571,6 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 	jt->transactionId = transactionID;
 
 	jt->Event = [=](std::string message) {
-		////parse json
-		//Json::Reader reader;
-		//Json::Value jmessage;
-		//if (!reader.parse(message, jmessage)) {
-		//	RTC_LOG(WARNING) << "Received unknown message. " << message;
-		//	return;
-		//}
-		//std::string janus_str;
-		//std::string json_object;
-		//Json::Value janus_value;
-		//std::string jsep_str;
-		////see if has remote jsep
-		//if (rtc::GetValueFromJsonObject(jmessage, "jsep",
-		//	&janus_value)) {
-		//	if (rtc::GetStringFromJsonObject(janus_value, "sdp",
-		//		&jsep_str)) {
-		//		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-		//			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
-		//		main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, session_description.release());
-		//	}
-		//}
 		list<string> resultList = { "jsep","sdp" };
 		std::string jsep_str=OptString(message, resultList);
 		REMOTE_SDP_INFO* pInfo = new REMOTE_SDP_INFO;
@@ -777,6 +760,34 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 
 			if (janus_str == "event") {
 				RTC_LOG(INFO) << "Got a plugin event! ";
+				//get publishers
+				list<string> str_publishers{ "plugindata" ,"data","publishers"};
+				Json::Value value_publishers = optJSONValue(message, str_publishers);
+				std::vector<Json::Value> PublisherVec;
+
+				rtc::JsonArrayToValueVector(value_publishers, &PublisherVec);
+				//constrain the max publishers count to 5
+				for (auto pub : PublisherVec) {
+					std::string str_feedid;
+					std::string display;
+					rtc::GetStringFromJsonObject(pub,"feedId",&str_feedid);
+					rtc::GetStringFromJsonObject(pub, "display", &display);
+					long long int feedId= std::stoll(str_feedid);
+					CreateHandle("janus.plugin.videoroom", feedId, display);
+				}
+
+				rtc::JsonArrayToBoolVector
+				
+
+				JSONArray publishers = data.optJSONArray("publishers");
+				if (publishers != null && publishers.length() > 0) {
+					for (int i = 0; i < publishers.length(); i++) {
+						JSONObject publisher = publishers.optJSONObject(i);
+						BigInteger feedId = new BigInteger(publisher.optString("id"));
+						String display = publisher.optString("display");
+						attach(feedId, display);
+					}
+				}
 
 				bool bSuccess = rtc::GetStringFromJsonObject(jmessage, "transaction",
 					&janus_str);
@@ -842,6 +853,28 @@ long long int OptLLInt(std::string message, list<string> keyList) {
 	}
 	std::string tmp_str = rtc::JsonValueToString(jvalue);
 	return std::stoll(tmp_str);
+}
+
+Json::Value optJSONValue(std::string message, list<string> keyList) {
+	//parse json
+	Json::Reader reader;
+	Json::Value jmessage;
+	if (!reader.parse(message, jmessage)) {
+		RTC_LOG(WARNING) << "Received unknown message. " << message;
+		return;//FIXME should return by another param with type enum
+	}
+	Json::Value jvalue = jmessage;
+	Json::Value jvalue2;
+	for (auto key : keyList) {
+		if (rtc::GetValueFromJsonObject(jvalue, key,
+			&jvalue2)) {
+			jvalue = jvalue2;
+		}
+		else {
+			return NULL;
+		}
+	}
+	return jvalue;
 }
 
 
