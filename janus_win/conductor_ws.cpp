@@ -567,19 +567,33 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 	jt->transactionId = transactionID;
 
 	jt->Event = [=](std::string message) {
+		////parse json
+		//Json::Reader reader;
+		//Json::Value jmessage;
+		//if (!reader.parse(message, jmessage)) {
+		//	RTC_LOG(WARNING) << "Received unknown message. " << message;
+		//	return;
+		//}
+		//std::string janus_str;
+		//std::string json_object;
+		//Json::Value janus_value;
+		//std::string jsep_str;
+		////see if has remote jsep
+		//if (rtc::GetValueFromJsonObject(jmessage, "jsep",
+		//	&janus_value)) {
+		//	if (rtc::GetStringFromJsonObject(janus_value, "sdp",
+		//		&jsep_str)) {
+		//		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+		//			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
+		//		main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, session_description.release());
+		//	}
+		//}
 		list<string> resultList = { "jsep","sdp" };
 		std::string jsep_str=OptString(message, resultList);
 		REMOTE_SDP_INFO* pInfo = new REMOTE_SDP_INFO;
 		pInfo->handleId = handleId;
 		pInfo->jsep_str = jsep_str;
-		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
 		main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, pInfo);
-	
-		/*REMOTE_SDP_INFO *rsInfo=new REMOTE_SDP_INFO;
-		rsInfo->handleId = handleId;
-		rsInfo->pInterface = session_description.get();
-		main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, (void*)(rsInfo));*/
 	};
 
 	m_transactionMap[transactionID] = jt;
@@ -800,7 +814,9 @@ std::string OptString(std::string message, list<string> keyList) {
 			return std::string("");
 		}
 	}
-	std::string tmp_str = rtc::JsonValueToString(jvalue);
+	std::string tmp_str;
+	rtc::GetStringFromJson(jvalue, &tmp_str);
+	//std::string tmp_str = rtc::JsonValueToString(jvalue);//this result sdp parse error beacause /r/n
 	return tmp_str;
 }
 //jmessage:the json to be parse
