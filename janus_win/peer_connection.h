@@ -28,7 +28,8 @@ enum CallbackID {
 	NEW_TRACK_ADDED,
 	TRACK_REMOVED,
 	CREATE_OFFER,//added by pcg
-	SET_REMOTE_SDP//added by pcg
+	SET_REMOTE_ANSWER,//added by pcg
+	SET_REMOTE_OFFER
 };
 
 class PeerConnectionCallback {
@@ -52,7 +53,7 @@ public:
 	void SetHandleId(long long int handleId);
 	long long int GetHandleId();
 	void CreateOffer();
-	void CreateSessionSDP(std::string jsep_str);
+	void CreateAnswer();
 	void SetRemoteDescription(webrtc::SessionDescriptionInterface* session_description);
 protected:
 	// PeerConnectionObserver implementation.

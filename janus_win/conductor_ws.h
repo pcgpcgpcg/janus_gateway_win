@@ -120,10 +120,10 @@ protected:
 	private:
 		void KeepAlive();
 		void CreateSession();
-		void CreateHandle();
 		void CreateHandle(std::string pluginName, long long int feedId, std::string display);
 		void JoinRoom(std::string pluginName, long long int handleId, long long int feedId);
 		void SendOffer(long long int handleId, std::string sdp_type, std::string sdp_desc);
+		void SendAnswer(long long int handleId, std::string sdp_type, std::string sdp_desc);
 		void trickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate);
 		void trickleCandidateComplete(long long int handleId);
 		void SendBitrateConstraint(long long int handleId);

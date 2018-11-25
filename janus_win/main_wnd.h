@@ -64,8 +64,8 @@ class MainWindow {
   virtual void StartLocalRenderer(webrtc::VideoTrackInterface* local_video) = 0;
   virtual void StopLocalRenderer() = 0;
   virtual void StartRemoteRenderer(
-      webrtc::VideoTrackInterface* remote_video) = 0;
-  virtual void StopRemoteRenderer() = 0;
+      int nIndex,webrtc::VideoTrackInterface* remote_video) = 0;
+  virtual void StopRemoteRenderer(int nIndex) = 0;
 
   virtual void QueueUIThreadCallback(int msg_id, void* data) = 0;
 };
@@ -97,8 +97,8 @@ class MainWnd : public MainWindow {
 
   virtual void StartLocalRenderer(webrtc::VideoTrackInterface* local_video);
   virtual void StopLocalRenderer();
-  virtual void StartRemoteRenderer(webrtc::VideoTrackInterface* remote_video);
-  virtual void StopRemoteRenderer();
+  virtual void StartRemoteRenderer(int nIndex,webrtc::VideoTrackInterface* remote_video);
+  virtual void StopRemoteRenderer(int nIndex);
 
   virtual void QueueUIThreadCallback(int msg_id, void* data);
 
@@ -182,7 +182,7 @@ class MainWnd : public MainWindow {
 
  private:
   std::unique_ptr<VideoRenderer> local_renderer_;
-  std::unique_ptr<VideoRenderer> remote_renderer_;
+  std::unique_ptr<VideoRenderer> remote_renderer_[4];
   UI ui_;
   HWND wnd_;
   DWORD ui_thread_id_;

@@ -52,7 +52,6 @@ void PeerConnection::OnSuccess(webrtc::SessionDescriptionInterface* desc) {
 	std::string sdp;
 	desc->ToString(&sdp);
 	m_pConductorCallback->PCSendSDP(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
-	//SendOffer(m_HandleId, webrtc::SdpTypeToString(desc->GetType()), sdp);
 }
 
 void PeerConnection::OnFailure(webrtc::RTCError error) {
@@ -101,11 +100,10 @@ void PeerConnection::CreateOffer() {
 		this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
 }
 
-void PeerConnection::CreateSessionSDP(std::string jsep_str) {
-	std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-		webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
-	int a;
-	a = 1;
+void PeerConnection::CreateAnswer() {
+	//TODO RTCOfferAnswerOptions should set as a option
+	peer_connection_->CreateAnswer(
+		this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
 }
 
 

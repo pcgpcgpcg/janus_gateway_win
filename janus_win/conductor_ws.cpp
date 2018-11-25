@@ -67,20 +67,22 @@ void ConductorWs::Close() {
 	
 
 bool ConductorWs::InitializePeerConnection(long long int handleId,bool bPublisher) {
-	RTC_DCHECK(!peer_connection_factory_);
 	if (m_peer_connection_map.find(handleId) != m_peer_connection_map.end()) {
 		//existing
 		return false;
 	}
 
-	peer_connection_factory_ = webrtc::CreatePeerConnectionFactory(
-		nullptr /* network_thread */, nullptr /* worker_thread */,
-		nullptr /* signaling_thread */, nullptr /* default_adm */,
-		webrtc::CreateBuiltinAudioEncoderFactory(),
-		webrtc::CreateBuiltinAudioDecoderFactory(),
-		webrtc::CreateBuiltinVideoEncoderFactory(),
-		webrtc::CreateBuiltinVideoDecoderFactory(), nullptr /* audio_mixer */,
-		nullptr /* audio_processing */);
+	if (!peer_connection_factory_) {
+		peer_connection_factory_ = webrtc::CreatePeerConnectionFactory(
+			nullptr /* network_thread */, nullptr /* worker_thread */,
+			nullptr /* signaling_thread */, nullptr /* default_adm */,
+			webrtc::CreateBuiltinAudioEncoderFactory(),
+			webrtc::CreateBuiltinAudioDecoderFactory(),
+			webrtc::CreateBuiltinVideoEncoderFactory(),
+			webrtc::CreateBuiltinVideoDecoderFactory(), nullptr /* audio_mixer */,
+			nullptr /* audio_processing */);
+	}
+	
 
 	if (!peer_connection_factory_) {
 		main_wnd_->MessageBox("Error", "Failed to initialize PeerConnectionFactory",
@@ -161,7 +163,13 @@ void ConductorWs::EnsureStreamingUI() {
 //
 
 void ConductorWs::PCSendSDP(long long int handleId, std::string sdpType, std::string sdp) {
-	SendOffer(handleId, sdpType, sdp);
+	if (sdpType == "offer") {
+		SendOffer(handleId, sdpType, sdp);
+	}
+	else {
+		SendAnswer(handleId, sdpType, sdp);
+	}
+	
 }
 
 void ConductorWs::PCQueueUIThreadCallback(int msg_id, void* data){
@@ -367,7 +375,8 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 	}
 
 	case CREATE_OFFER: {
-		long long int handleId = (long long int)(data);
+		long long int* pHandleId = (long long int*)(data);
+		long long int handleId = *pHandleId;
 		if (InitializePeerConnection(handleId,true)) {
 			m_peer_connection_map[handleId]->CreateOffer();
 		}
@@ -377,11 +386,10 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		break;
 	}
 
-	case SET_REMOTE_SDP: {
+	case SET_REMOTE_ANSWER: {
 		REMOTE_SDP_INFO* pInfo = (REMOTE_SDP_INFO *)(data);
 		long long int handleId = pInfo->handleId;
 		std::string jsep_str = pInfo->jsep_str;
-		m_peer_connection_map[handleId]->CreateSessionSDP(jsep_str);
 		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
 			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
 		//auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(data);
@@ -390,6 +398,26 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 		//delete pInfo;
 		//TODO fixme suitable here?
 		SendBitrateConstraint(handleId);
+		break;
+	}
+
+	case SET_REMOTE_OFFER: {
+		REMOTE_SDP_INFO* pInfo = (REMOTE_SDP_INFO *)(data);
+		long long int handleId = pInfo->handleId;
+		std::string jsep_str = pInfo->jsep_str;
+		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+			webrtc::CreateSessionDescription(webrtc::SdpType::kOffer, jsep_str);
+		//as subscriber
+		if (InitializePeerConnection(handleId, false)) {
+			m_peer_connection_map[handleId]->SetRemoteDescription(session_description.release());
+			m_peer_connection_map[handleId]->CreateAnswer();
+
+		}
+		else {
+			main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
+		}
+		//peerConnection.setRemoteDescription(sdpObserver, sdp);
+		//peerConnection.createAnswer(connection.sdpObserver, sdpMediaConstraints);
 		break;
 	}
 
@@ -518,8 +546,13 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		}
 		//joined the room as a subscriber
 		if (videoroom == "attached") {
-			//parse the remote sdp
-			//events.onRemoteJsep(handleId, jsep);
+			//TODO make sure this sdp is offer from remote peer
+			list<string> resultList = { "jsep","sdp" };
+			std::string jsep_str = OptString(message, resultList);
+			REMOTE_SDP_INFO* pInfo = new REMOTE_SDP_INFO;
+			pInfo->handleId = handleId;
+			pInfo->jsep_str = jsep_str;
+			main_wnd_->QueueUIThreadCallback(SET_REMOTE_OFFER, pInfo);
 		}
 	};
 
@@ -530,7 +563,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 	Json::Value jbody;
 	if (pluginName == "janus.plugin.videoroom") {
 		jbody["request"] = "join";
-		jbody["room"] = "1234";//FIXME should be variable
+		jbody["room"] = 1234;//FIXME should be variable
 		if (feedId == 0) {
 			jbody["ptype"] = "publisher";
 			jbody["display"] = "pcg";//FIXME should be variable
@@ -545,6 +578,8 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		jmessage["transaction"] = transactionID;
 		jmessage["session_id"] = m_SessionId;
 		jmessage["handle_id"] = handleId;
+		client_->SendToJanus(writer.write(jmessage));
+		//After joined,Then create offer
 	}
 	else if (pluginName == "janus.plugin.audiobridge") {
 
@@ -576,7 +611,7 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 		REMOTE_SDP_INFO* pInfo = new REMOTE_SDP_INFO;
 		pInfo->handleId = handleId;
 		pInfo->jsep_str = jsep_str;
-		main_wnd_->QueueUIThreadCallback(SET_REMOTE_SDP, pInfo);
+		main_wnd_->QueueUIThreadCallback(SET_REMOTE_ANSWER, pInfo);
 	};
 
 	m_transactionMap[transactionID] = jt;
@@ -589,6 +624,38 @@ void ConductorWs::SendOffer(long long int handleId, std::string sdp_type,std::st
 	jbody["request"] = "configure";
 	jbody["audio"] = true;
 	jbody["video"] = true;
+
+	jjsep["type"] = sdp_type;
+	jjsep["sdp"] = sdp_desc;
+
+	jmessage["body"] = jbody;
+	jmessage["jsep"] = jjsep;
+	jmessage["janus"] = "message";
+	jmessage["transaction"] = transactionID;
+	jmessage["session_id"] = m_SessionId;
+	jmessage["handle_id"] = handleId;
+	//beacause the thread is on UI,so shift thread to ws thread
+	client_->SendToJanusAsync(writer.write(jmessage));
+}
+
+void ConductorWs::SendAnswer(long long int handleId, std::string sdp_type, std::string sdp_desc) {
+	std::string transactionID = RandomString(12);
+	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
+	jt->transactionId = transactionID;
+
+	jt->Event = [=](std::string message) {
+		
+	};
+
+	m_transactionMap[transactionID] = jt;
+
+	Json::StyledWriter writer;
+	Json::Value jmessage;
+	Json::Value jbody;
+	Json::Value jjsep;
+
+	jbody["request"] = "start";
+	jbody["room"] = "1234";
 
 	jjsep["type"] = sdp_type;
 	jjsep["sdp"] = sdp_desc;
@@ -647,35 +714,23 @@ void ConductorWs::SendBitrateConstraint(long long int handleId) {
 	std::string transactionID = RandomString(12);
 	std::shared_ptr<JanusTransaction> jt(new JanusTransaction());
 	jt->transactionId = transactionID;
+	jt->Success = [=](std::string message) {
+		
+	};
 
 	jt->Event = [=](std::string message) {
-		//parse json
-		Json::Reader reader;
-		Json::Value jmessage;
-		if (!reader.parse(message, jmessage)) {
-			RTC_LOG(WARNING) << "Received unknown message. " << message;
-			return;
-		}
-		std::string janus_str;
-		std::string json_object;
-		Json::Value janus_value;
-		Json::Value janus_value_sub1;
-		std::string jsep_str;
-		//see if has remote jsep
-		if (rtc::GetValueFromJsonObject(jmessage, "plugindata",
-			&janus_value)) {
-			if (rtc::GetValueFromJsonObject(janus_value, "data",
-				&janus_value_sub1)) {
-				if (rtc::GetStringFromJsonObject(janus_value_sub1, "result",
-					&jsep_str)) {
-					if (jsep_str != "ok") {
-						//没有设置成功
-					}
-				}
-			}
-			
+		list<string> resultList = { "plugindata","data","result" };
+		std::string jsep_str = OptString(message, resultList);
+		if (jsep_str != "ok") {
+			//没有设置成功
 		}
 	};
+
+	jt->Error = [=](std::string, std::string) {
+		RTC_LOG(INFO) << "CreateHandle error:";
+	};
+
+
 	m_transactionMap[transactionID] = jt;
 
 	Json::StyledWriter writer;
@@ -683,6 +738,7 @@ void ConductorWs::SendBitrateConstraint(long long int handleId) {
 	Json::Value jbody;
 
 	jbody["bitrate"] = 128000;
+	jbody["request"] = "configure";
 
 	jmessage["janus"] = "message";
 	jmessage["body"] = jbody;
@@ -770,23 +826,12 @@ void ConductorWs::OnMessageFromJanus(int peer_id, const std::string& message) {
 				for (auto pub : PublisherVec) {
 					std::string str_feedid;
 					std::string display;
-					rtc::GetStringFromJsonObject(pub,"feedId",&str_feedid);
+					Json::Value jvalue;
+					rtc::GetValueFromJsonObject(pub,"id",&jvalue);
 					rtc::GetStringFromJsonObject(pub, "display", &display);
+					str_feedid = rtc::JsonValueToString(jvalue);
 					long long int feedId= std::stoll(str_feedid);
 					CreateHandle("janus.plugin.videoroom", feedId, display);
-				}
-
-				rtc::JsonArrayToBoolVector
-				
-
-				JSONArray publishers = data.optJSONArray("publishers");
-				if (publishers != null && publishers.length() > 0) {
-					for (int i = 0; i < publishers.length(); i++) {
-						JSONObject publisher = publishers.optJSONObject(i);
-						BigInteger feedId = new BigInteger(publisher.optString("id"));
-						String display = publisher.optString("display");
-						attach(feedId, display);
-					}
 				}
 
 				bool bSuccess = rtc::GetStringFromJsonObject(jmessage, "transaction",
@@ -861,7 +906,7 @@ Json::Value optJSONValue(std::string message, list<string> keyList) {
 	Json::Value jmessage;
 	if (!reader.parse(message, jmessage)) {
 		RTC_LOG(WARNING) << "Received unknown message. " << message;
-		return;//FIXME should return by another param with type enum
+		return NULL;//FIXME should return by another param with type enum
 	}
 	Json::Value jvalue = jmessage;
 	Json::Value jvalue2;
