@@ -127,7 +127,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="conductor.h" />
     <ClInclude Include="conductor_ws.h" />
     <ClInclude Include="defaults.h" />
     <ClInclude Include="flagdefs.h" />
@@ -139,7 +138,6 @@
     <ClInclude Include="peer_connection_wsclient.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="conductor.cc" />
     <ClCompile Include="conductor_ws.cpp" />
     <ClCompile Include="defaults.cc" />
     <ClCompile Include="JanusHandle.cpp" />

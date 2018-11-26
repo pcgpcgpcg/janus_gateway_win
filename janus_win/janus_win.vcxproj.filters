@@ -18,9 +18,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="conductor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="defaults.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -50,9 +47,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="conductor.cc">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="defaults.cc">
       <Filter>Source Files</Filter>
     </ClCompile>

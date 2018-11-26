@@ -8,6 +8,9 @@
 #include <list>
 
 #include "api/mediastreaminterface.h"
+#include "api/video/video_frame.h"
+#include "api/video/i420_buffer.h"
+#include "third_party/libyuv/include/libyuv/convert_argb.h"
 #include "api/peerconnectioninterface.h"
 #include "main_wnd.h"
 #include "peer_connection_wsclient.h"
@@ -30,6 +33,56 @@ enum CallbackID {
 	CREATE_OFFER,//added by pcg
 	SET_REMOTE_ANSWER,//added by pcg
 	SET_REMOTE_OFFER
+};
+
+struct NEW_TRACK {
+	long long int handleId;
+	webrtc::MediaStreamTrackInterface* pInterface;
+};
+
+// A little helper class to make sure we always to proper locking and
+// unlocking when working with VideoRenderer buffers.
+template <typename T>
+class AutoLock {
+public:
+	explicit AutoLock(T* obj) : obj_(obj) { obj_->Lock(); }
+	~AutoLock() { obj_->Unlock(); }
+
+protected:
+	T * obj_;
+};
+
+class VideoRenderer : public rtc::VideoSinkInterface<webrtc::VideoFrame> {
+public:
+	VideoRenderer(HWND wnd,
+		int width,
+		int height,
+		webrtc::VideoTrackInterface* track_to_render);
+	virtual ~VideoRenderer();
+
+	void Lock() { ::EnterCriticalSection(&buffer_lock_); }
+
+	void Unlock() { ::LeaveCriticalSection(&buffer_lock_); }
+
+	// VideoSinkInterface implementation
+	void OnFrame(const webrtc::VideoFrame& frame) override;
+
+	const BITMAPINFO& bmi() const { return bmi_; }
+	const uint8_t* image() const { return image_.get(); }
+
+protected:
+	void SetSize(int width, int height);
+
+	enum {
+		SET_SIZE,
+		RENDER_FRAME,
+	};
+
+	HWND wnd_;
+	BITMAPINFO bmi_;
+	std::unique_ptr<uint8_t[]> image_;
+	CRITICAL_SECTION buffer_lock_;
+	rtc::scoped_refptr<webrtc::VideoTrackInterface> rendered_track_;
 };
 
 class PeerConnectionCallback {
@@ -55,6 +108,8 @@ public:
 	void CreateOffer();
 	void CreateAnswer();
 	void SetRemoteDescription(webrtc::SessionDescriptionInterface* session_description);
+	void StartRenderer(HWND wnd,webrtc::VideoTrackInterface* remote_video);
+	void StopRenderer();
 protected:
 	// PeerConnectionObserver implementation.
 	void OnSignalingChange(
@@ -81,8 +136,9 @@ protected:
 public:
 	rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection_;
 	bool b_publisher_=false;//pub or sub
+	std::unique_ptr<VideoRenderer> renderer_;//b_publisher decide local_render or remote_render
 private:
 	PeerConnectionCallback *m_pConductorCallback=NULL;
-	long long int m_HandleId=0;//coresponding to the janus handleId
+	long long int m_HandleId=0;//coresponding to the janus handleId	
 };
 

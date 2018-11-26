@@ -97,11 +97,13 @@ protected:
 
 	void UIThreadCallback(int msg_id, void* data) override;
 
+	void DrawVideos(PAINTSTRUCT& ps, RECT& rc) override;
+
 	//peerconnectionCallback implementation
 	void PCSendSDP(long long int handleId, std::string sdpType, std::string sdp);
 	void PCQueueUIThreadCallback(int msg_id, void* data);
 	void PCTrickleCandidate(long long int handleId, const webrtc::IceCandidateInterface* candidate);
-	 void PCTrickleCandidateComplete(long long int handleId);
+	void PCTrickleCandidateComplete(long long int handleId);
 
 protected:
 	int peer_id_;
@@ -116,6 +118,7 @@ protected:
 	std::map<std::string, std::shared_ptr<JanusTransaction>> m_transactionMap;
 	std::map<long long int, std::shared_ptr<JanusHandle>> m_handleMap;
 	long long int m_SessionId=0LL;
+	HWND MainWnd_=NULL;
 
 	private:
 		void KeepAlive();

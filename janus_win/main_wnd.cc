@@ -212,21 +212,6 @@ void MainWnd::MessageBox(const char* caption, const char* text, bool is_error) {
   ::MessageBoxA(handle(), text, caption, flags);
 }
 
-void MainWnd::StartLocalRenderer(webrtc::VideoTrackInterface* local_video) {
-  local_renderer_.reset(new VideoRenderer(handle(), 1, 1, local_video));
-}
-
-void MainWnd::StopLocalRenderer() {
-  local_renderer_.reset();
-}
-
-void MainWnd::StartRemoteRenderer(int nIndex,webrtc::VideoTrackInterface* remote_video) {
-  remote_renderer_[nIndex].reset(new VideoRenderer(handle(), 1, 1, remote_video));
-}
-
-void MainWnd::StopRemoteRenderer(int nIndex) {
-  remote_renderer_[nIndex].reset();
-}
 
 void MainWnd::QueueUIThreadCallback(int msg_id, void* data) {
 	int cur_tid=GetCurrentThreadId();
@@ -234,6 +219,10 @@ void MainWnd::QueueUIThreadCallback(int msg_id, void* data) {
                       static_cast<WPARAM>(msg_id),
                       reinterpret_cast<LPARAM>(data));
 }
+
+HWND MainWnd::GetHwnd() {
+	return handle();
+ }
 
 /*void MainWnd::OnPaint() {
   PAINTSTRUCT ps;
@@ -367,110 +356,9 @@ void MainWnd::OnPaint() {
 
 	RECT rc;
 	::GetClientRect(handle(), &rc);
-
-	VideoRenderer* local_renderer = local_renderer_.get();
-	VideoRenderer* remote_renderer[4];
-	for (int i = 0; i < 4; i++) {
-		remote_renderer[i] = remote_renderer_[i].get();
-	}
-	//VideoRenderer* remote_renderer = remote_renderer_.get();
-	//change && to || because if no subscriber ,we also make local renderer show as it is
-	if (ui_ == STREAMING && (remote_renderer[0] && local_renderer)) {
-		AutoLock<VideoRenderer> local_lock(local_renderer);
-		for (int i = 0; i < 4; i++) {
-			if (remote_renderer[i]) {
-				AutoLock<VideoRenderer> remote_lock(remote_renderer[i]);
-			}
-			
-		}
-		
-
-		const BITMAPINFO& bmi = remote_renderer[0]->bmi();
-		int height = abs(bmi.bmiHeader.biHeight);
-		int width = bmi.bmiHeader.biWidth;
-
-
-		const uint8_t* image = remote_renderer[0]->image();
-		if (image != NULL) {
-			HDC dc_mem = ::CreateCompatibleDC(ps.hdc);
-			::SetStretchBltMode(dc_mem, HALFTONE);
-
-			// Set the map mode so that the ratio will be maintained for us.
-			HDC all_dc[] = { ps.hdc, dc_mem };
-			for (size_t i = 0; i < arraysize(all_dc); ++i) {
-				SetMapMode(all_dc[i], MM_ISOTROPIC);
-				SetWindowExtEx(all_dc[i], width, height, NULL);
-				SetViewportExtEx(all_dc[i], rc.right, rc.bottom, NULL);
-			}
-
-			HBITMAP bmp_mem = ::CreateCompatibleBitmap(ps.hdc, rc.right, rc.bottom);
-			HGDIOBJ bmp_old = ::SelectObject(dc_mem, bmp_mem);
-
-			POINT logical_area = { rc.right, rc.bottom };
-			DPtoLP(ps.hdc, &logical_area, 1);
-
-			HBRUSH brush = ::CreateSolidBrush(RGB(0, 0, 0));
-			RECT logical_rect = { 0, 0, logical_area.x, logical_area.y };
-			::FillRect(dc_mem, &logical_rect, brush);
-			::DeleteObject(brush);
-
-			int x = (logical_area.x / 2) - (width / 2);
-			int y = (logical_area.y / 2) - (height / 2);
-
-			StretchDIBits(dc_mem, x, y, width, height, 0, 0, width, height, image,
-				&bmi, DIB_RGB_COLORS, SRCCOPY);
-
-			if ((rc.right - rc.left) > 200 && (rc.bottom - rc.top) > 200) {
-				const BITMAPINFO& bmi = local_renderer->bmi();
-				image = local_renderer->image();
-				int thumb_width = bmi.bmiHeader.biWidth / 4;
-				int thumb_height = abs(bmi.bmiHeader.biHeight) / 4;
-				StretchDIBits(dc_mem, logical_area.x - thumb_width - 10,
-					logical_area.y - thumb_height - 10, thumb_width,
-					thumb_height, 0, 0, bmi.bmiHeader.biWidth,
-					-bmi.bmiHeader.biHeight, image, &bmi, DIB_RGB_COLORS,
-					SRCCOPY);
-
-				if (remote_renderer[1]) {
-					const BITMAPINFO& bmi = remote_renderer[1]->bmi();
-					const uint8_t* image = remote_renderer[1]->image();
-					StretchDIBits(dc_mem, logical_area.x - thumb_width - 10,
-						logical_area.y - thumb_height * 2 - 10, thumb_width,
-						thumb_height, 0, 0, bmi.bmiHeader.biWidth,
-						-bmi.bmiHeader.biHeight, image, &bmi, DIB_RGB_COLORS,
-						SRCCOPY);
-				}
-			}
-
-			BitBlt(ps.hdc, 0, 0, logical_area.x, logical_area.y, dc_mem, 0, 0,
-				SRCCOPY);
-
-			// Cleanup.
-			::SelectObject(dc_mem, bmp_old);
-			::DeleteObject(bmp_mem);
-			::DeleteDC(dc_mem);
-		}
-		else {
-			// We're still waiting for the video stream to be initialized.
-			HBRUSH brush = ::CreateSolidBrush(RGB(0, 0, 0));
-			::FillRect(ps.hdc, &rc, brush);
-			::DeleteObject(brush);
-
-			HGDIOBJ old_font = ::SelectObject(ps.hdc, GetDefaultFont());
-			::SetTextColor(ps.hdc, RGB(0xff, 0xff, 0xff));
-			::SetBkMode(ps.hdc, TRANSPARENT);
-
-			std::string text(kConnecting);
-			if (!local_renderer->image()) {
-				text += kNoVideoStreams;
-			}
-			else {
-				text += kNoIncomingStream;
-			}
-			::DrawTextA(ps.hdc, text.c_str(), -1, &rc,
-				DT_SINGLELINE | DT_CENTER | DT_VCENTER);
-			::SelectObject(ps.hdc, old_font);
-		}
+	//直接画视频才是最厉害的办法
+	if (ui_ == STREAMING) {
+		callback_->DrawVideos(ps,rc);
 	}
 	else {
 		HBRUSH brush = ::CreateSolidBrush(::GetSysColor(COLOR_WINDOW));
@@ -724,65 +612,3 @@ void MainWnd::HandleTabbing() {
 }
 
 //
-// MainWnd::VideoRenderer
-//
-
-MainWnd::VideoRenderer::VideoRenderer(
-    HWND wnd,
-    int width,
-    int height,
-    webrtc::VideoTrackInterface* track_to_render)
-    : wnd_(wnd), rendered_track_(track_to_render) {
-  ::InitializeCriticalSection(&buffer_lock_);
-  ZeroMemory(&bmi_, sizeof(bmi_));
-  bmi_.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmi_.bmiHeader.biPlanes = 1;
-  bmi_.bmiHeader.biBitCount = 32;
-  bmi_.bmiHeader.biCompression = BI_RGB;
-  bmi_.bmiHeader.biWidth = width;
-  bmi_.bmiHeader.biHeight = -height;
-  bmi_.bmiHeader.biSizeImage =
-      width * height * (bmi_.bmiHeader.biBitCount >> 3);
-  rendered_track_->AddOrUpdateSink(this, rtc::VideoSinkWants());
-}
-
-MainWnd::VideoRenderer::~VideoRenderer() {
-  rendered_track_->RemoveSink(this);
-  ::DeleteCriticalSection(&buffer_lock_);
-}
-
-void MainWnd::VideoRenderer::SetSize(int width, int height) {
-  AutoLock<VideoRenderer> lock(this);
-
-  if (width == bmi_.bmiHeader.biWidth && height == bmi_.bmiHeader.biHeight) {
-    return;
-  }
-
-  bmi_.bmiHeader.biWidth = width;
-  bmi_.bmiHeader.biHeight = -height;
-  bmi_.bmiHeader.biSizeImage =
-      width * height * (bmi_.bmiHeader.biBitCount >> 3);
-  image_.reset(new uint8_t[bmi_.bmiHeader.biSizeImage]);
-}
-
-void MainWnd::VideoRenderer::OnFrame(const webrtc::VideoFrame& video_frame) {
-  {
-    AutoLock<VideoRenderer> lock(this);
-
-    rtc::scoped_refptr<webrtc::I420BufferInterface> buffer(
-        video_frame.video_frame_buffer()->ToI420());
-    if (video_frame.rotation() != webrtc::kVideoRotation_0) {
-      buffer = webrtc::I420Buffer::Rotate(*buffer, video_frame.rotation());
-    }
-
-    SetSize(buffer->width(), buffer->height());
-
-    RTC_DCHECK(image_.get() != NULL);
-    libyuv::I420ToARGB(buffer->DataY(), buffer->StrideY(), buffer->DataU(),
-                       buffer->StrideU(), buffer->DataV(), buffer->StrideV(),
-                       image_.get(),
-                       bmi_.bmiHeader.biWidth * bmi_.bmiHeader.biBitCount / 8,
-                       buffer->width(), buffer->height());
-  }
-  InvalidateRect(wnd_, NULL, TRUE);
-}

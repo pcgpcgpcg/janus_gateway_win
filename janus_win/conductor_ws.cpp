@@ -37,6 +37,7 @@ ConductorWs::ConductorWs(PeerConnectionWsClient* client, MainWindow* main_wnd)
 	: peer_id_(-1), loopback_(false), client_(client), main_wnd_(main_wnd) {
 	client_->RegisterObserver(this);
 	main_wnd->RegisterObserver(this);
+	this->MainWnd_=main_wnd->GetHwnd();
 }
 
 ConductorWs::~ConductorWs() {
@@ -56,13 +57,6 @@ bool ConductorWs::connection_active(long long int handleId) const {
 bool ConductorWs::connection_active() const {
 	return m_peer_connection_map.size() > 0;
 	//return peer_connection_ != nullptr;
-}
-
-//called by main_wnd receive onClose message
-void ConductorWs::Close() {
-	for (auto &key : m_peer_connection_map) {
-		DeletePeerConnection(key.first);
-	}
 }
 	
 
@@ -143,10 +137,7 @@ bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 }
 
 void ConductorWs::DeletePeerConnection(long long int handleId) {
-	if (m_peer_connection_map[handleId]->b_publisher_) {
-		main_wnd_->StopLocalRenderer();
-	}
-	main_wnd_->StopRemoteRenderer();
+	m_peer_connection_map[handleId]->StopRenderer();
 	m_peer_connection_map[handleId]->peer_connection_ = nullptr;
 	//peer_connection_factory_ = nullptr; //TODO should destroy before quit
 }
@@ -219,10 +210,6 @@ void ConductorWs::OnServerConnectionFailure() {
 		true);
 }
 
-void ConductorWs::ConnectToPeer(int peer_id) {
-
-}
-
 void ConductorWs::OnMessageSent(int err) {
 
 }
@@ -242,6 +229,215 @@ void ConductorWs::StartLogin(const std::string& server, int port) {
 
 void ConductorWs::DisconnectFromServer() {
 	
+}
+
+void ConductorWs::ConnectToPeer(int peer_id) {
+
+}
+
+void ConductorWs::DisconnectFromCurrentPeer() {
+	RTC_LOG(INFO) << __FUNCTION__;
+	/*if (peer_connection_.get()) {
+	DeletePeerConnection();
+	}*/
+	for (auto &key : m_peer_connection_map) {
+		DeletePeerConnection(key.first);
+	}
+
+	if (main_wnd_->IsWindow())
+		main_wnd_->SwitchToConnectUI();
+}
+
+void ConductorWs::UIThreadCallback(int msg_id, void* data) {
+	switch (msg_id) {
+	case PEER_CONNECTION_CLOSED:
+		RTC_LOG(INFO) << "PEER_CONNECTION_CLOSED";
+		for (auto &key : m_peer_connection_map) {
+			DeletePeerConnection(key.first);
+		}
+
+		if (main_wnd_->IsWindow()) {
+			main_wnd_->SwitchToConnectUI();
+		}
+		else {
+			DisconnectFromServer();
+		}
+		break;
+
+	case NEW_TRACK_ADDED: {
+		NEW_TRACK* pTrack = (NEW_TRACK*)data;
+		long long int handleId = pTrack->handleId;
+		auto* track = reinterpret_cast<webrtc::MediaStreamTrackInterface*>(pTrack->pInterface);
+		if (track->kind() == webrtc::MediaStreamTrackInterface::kVideoKind) {
+			auto* video_track = static_cast<webrtc::VideoTrackInterface*>(track);
+			//main_wnd_->StartRemoteRenderer(video_track);
+			m_peer_connection_map[handleId]->StartRenderer(MainWnd_, video_track);
+		}
+		track->Release();
+		break;
+	}
+
+	case TRACK_REMOVED: {
+		// Remote peer stopped sending a track.
+		auto* track = reinterpret_cast<webrtc::MediaStreamTrackInterface*>(data);
+		track->Release();
+		break;
+	}
+
+	case CREATE_OFFER: {
+		long long int* pHandleId = (long long int*)(data);
+		long long int handleId = *pHandleId;
+		if (InitializePeerConnection(handleId, true)) {
+			m_peer_connection_map[handleId]->CreateOffer();
+		}
+		else {
+			main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
+		}
+		break;
+	}
+
+	case SET_REMOTE_ANSWER: {
+		REMOTE_SDP_INFO* pInfo = (REMOTE_SDP_INFO *)(data);
+		long long int handleId = pInfo->handleId;
+		std::string jsep_str = pInfo->jsep_str;
+		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
+		//auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(data);
+		//auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(pInfo->pInterface);	
+		m_peer_connection_map[handleId]->SetRemoteDescription(session_description.release());
+		//delete pInfo;
+		//TODO fixme suitable here?
+		SendBitrateConstraint(handleId);
+		break;
+	}
+
+	case SET_REMOTE_OFFER: {
+		REMOTE_SDP_INFO* pInfo = (REMOTE_SDP_INFO *)(data);
+		long long int handleId = pInfo->handleId;
+		std::string jsep_str = pInfo->jsep_str;
+		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
+			webrtc::CreateSessionDescription(webrtc::SdpType::kOffer, jsep_str);
+		//as subscriber
+		if (InitializePeerConnection(handleId, false)) {
+			m_peer_connection_map[handleId]->SetRemoteDescription(session_description.release());
+			m_peer_connection_map[handleId]->CreateAnswer();
+
+		}
+		else {
+			main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
+		}
+		//peerConnection.setRemoteDescription(sdpObserver, sdp);
+		//peerConnection.createAnswer(connection.sdpObserver, sdpMediaConstraints);
+		break;
+	}
+
+	default:
+		RTC_NOTREACHED();
+		break;
+	}
+}
+
+//called by main_wnd receive onClose message
+void ConductorWs::Close() {
+	for (auto &key : m_peer_connection_map) {
+		DeletePeerConnection(key.first);
+	}
+}
+
+
+void ConductorWs::DrawVideos(PAINTSTRUCT& ps, RECT& rc) {
+	HDC dc_mem = NULL;
+	HDC all_dc[] = { ps.hdc, dc_mem };
+	HBITMAP bmp_mem = NULL;
+	HGDIOBJ bmp_old = NULL;
+	POINT logical_area;
+	int nIndex = 0;
+	for (auto &pc : m_peer_connection_map) {
+		nIndex++;
+		VideoRenderer* renderer = pc.second->renderer_.get();
+		if (renderer) {
+			AutoLock<VideoRenderer> local_lock(renderer);
+			const BITMAPINFO& bmi = renderer->bmi();
+			int height = abs(bmi.bmiHeader.biHeight);
+			int width = bmi.bmiHeader.biWidth;
+			const uint8_t* image = renderer->image();
+			if (image != NULL) {
+				//the first one is local renderer
+				if (!dc_mem) {
+					dc_mem = ::CreateCompatibleDC(ps.hdc);
+					::SetStretchBltMode(dc_mem, HALFTONE);
+					// Set the map mode so that the ratio will be maintained for us.			
+					for (size_t i = 0; i < arraysize(all_dc); ++i) {
+						SetMapMode(all_dc[i], MM_ISOTROPIC);
+						SetWindowExtEx(all_dc[i], width, height, NULL);
+						SetViewportExtEx(all_dc[i], rc.right, rc.bottom, NULL);
+					}
+					bmp_mem = ::CreateCompatibleBitmap(ps.hdc, rc.right, rc.bottom);
+					bmp_old = ::SelectObject(dc_mem, bmp_mem);
+
+					logical_area = { rc.right, rc.bottom };
+					DPtoLP(ps.hdc, &logical_area, 1);
+
+					HBRUSH brush = ::CreateSolidBrush(RGB(0, 0, 0));
+					RECT logical_rect = { 0, 0, logical_area.x, logical_area.y };
+					::FillRect(dc_mem, &logical_rect, brush);
+					::DeleteObject(brush);
+
+					int x = (logical_area.x / 2) - (width / 2);
+					int y = (logical_area.y / 2) - (height / 2);
+
+					StretchDIBits(dc_mem, x, y, width, height, 0, 0, width, height, image,
+						&bmi, DIB_RGB_COLORS, SRCCOPY);
+				}
+				else {
+					if ((rc.right - rc.left) > 200 && (rc.bottom - rc.top) > 200) {
+						const BITMAPINFO& bmi = renderer->bmi();
+						image = renderer->image();
+						int thumb_width = bmi.bmiHeader.biWidth / 4;
+						int thumb_height = abs(bmi.bmiHeader.biHeight) / 4;
+						StretchDIBits(dc_mem, logical_area.x - thumb_width - 10,
+							logical_area.y - thumb_height*nIndex - 10, thumb_width,
+							thumb_height, 0, 0, bmi.bmiHeader.biWidth,
+							-bmi.bmiHeader.biHeight, image, &bmi, DIB_RGB_COLORS,
+							SRCCOPY);
+					}
+
+				}
+
+			}//end if (image != NULL)
+
+			//这个应该放在for循环之外
+			//else {
+			//	// We're still waiting for the video stream to be initialized.
+			//	HBRUSH brush = ::CreateSolidBrush(RGB(0, 0, 0));
+			//	::FillRect(ps.hdc, &rc, brush);
+			//	::DeleteObject(brush);
+
+			//	HGDIOBJ old_font = ::SelectObject(ps.hdc, GetDefaultFont());
+			//	::SetTextColor(ps.hdc, RGB(0xff, 0xff, 0xff));
+			//	::SetBkMode(ps.hdc, TRANSPARENT);
+
+			//	std::string text(kConnecting);
+			//	if (!local_renderer->image()) {
+			//		text += kNoVideoStreams;
+			//	}
+			//	else {
+			//		text += kNoIncomingStream;
+			//	}
+			//	::DrawTextA(ps.hdc, text.c_str(), -1, &rc,
+			//		DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+			//	::SelectObject(ps.hdc, old_font);
+			//}
+		}
+	}
+
+	BitBlt(ps.hdc, 0, 0, logical_area.x, logical_area.y, dc_mem, 0, 0,
+		SRCCOPY);
+
+	// Cleanup.
+	::SelectObject(dc_mem, bmp_old);
+	::DeleteObject(bmp_mem);
+	::DeleteDC(dc_mem);
 }
 
 std::unique_ptr<cricket::VideoCapturer> ConductorWs::OpenVideoCaptureDevice() {
@@ -313,7 +509,8 @@ void ConductorWs::AddTracks(long long int handleId) {
 			peer_connection_factory_->CreateVideoTrack(
 				kVideoLabel, peer_connection_factory_->CreateVideoSource(
 					std::move(video_device), nullptr)));
-		main_wnd_->StartLocalRenderer(video_track_);
+		//main_wnd_->StartLocalRenderer(video_track_);
+		m_peer_connection_map[handleId]->StartRenderer(MainWnd_, video_track_);
 
 		result_or_error = m_peer_connection_map[handleId]->peer_connection_->AddTrack(video_track_, { kStreamId });
 		if (!result_or_error.ok()) {
@@ -326,105 +523,6 @@ void ConductorWs::AddTracks(long long int handleId) {
 	}
 
 	main_wnd_->SwitchToStreamingUI();
-}
-
-void ConductorWs::DisconnectFromCurrentPeer() {
-	RTC_LOG(INFO) << __FUNCTION__;
-	/*if (peer_connection_.get()) {
-		DeletePeerConnection();
-	}*/
-	for (auto &key : m_peer_connection_map) {
-		DeletePeerConnection(key.first);
-	}
-
-	if (main_wnd_->IsWindow())
-		main_wnd_->SwitchToConnectUI();
-}
-
-void ConductorWs::UIThreadCallback(int msg_id, void* data) {
-	switch (msg_id) {
-	case PEER_CONNECTION_CLOSED:
-		RTC_LOG(INFO) << "PEER_CONNECTION_CLOSED";
-		for (auto &key : m_peer_connection_map) {
-			DeletePeerConnection(key.first);
-		}
-		
-		if (main_wnd_->IsWindow()) {
-				main_wnd_->SwitchToConnectUI();
-		}
-		else {
-			DisconnectFromServer();
-		}
-		break;
-
-	case NEW_TRACK_ADDED: {
-		auto* track = reinterpret_cast<webrtc::MediaStreamTrackInterface*>(data);
-		if (track->kind() == webrtc::MediaStreamTrackInterface::kVideoKind) {
-			auto* video_track = static_cast<webrtc::VideoTrackInterface*>(track);
-			main_wnd_->StartRemoteRenderer(video_track);
-		}
-		track->Release();
-		break;
-	}
-
-	case TRACK_REMOVED: {
-		// Remote peer stopped sending a track.
-		auto* track = reinterpret_cast<webrtc::MediaStreamTrackInterface*>(data);
-		track->Release();
-		break;
-	}
-
-	case CREATE_OFFER: {
-		long long int* pHandleId = (long long int*)(data);
-		long long int handleId = *pHandleId;
-		if (InitializePeerConnection(handleId,true)) {
-			m_peer_connection_map[handleId]->CreateOffer();
-		}
-		else {
-			main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
-		}
-		break;
-	}
-
-	case SET_REMOTE_ANSWER: {
-		REMOTE_SDP_INFO* pInfo = (REMOTE_SDP_INFO *)(data);
-		long long int handleId = pInfo->handleId;
-		std::string jsep_str = pInfo->jsep_str;
-		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-			webrtc::CreateSessionDescription(webrtc::SdpType::kAnswer, jsep_str);
-		//auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(data);
-		//auto* session_description = reinterpret_cast<webrtc::SessionDescriptionInterface*>(pInfo->pInterface);	
-		m_peer_connection_map[handleId]->SetRemoteDescription(session_description.release());
-		//delete pInfo;
-		//TODO fixme suitable here?
-		SendBitrateConstraint(handleId);
-		break;
-	}
-
-	case SET_REMOTE_OFFER: {
-		REMOTE_SDP_INFO* pInfo = (REMOTE_SDP_INFO *)(data);
-		long long int handleId = pInfo->handleId;
-		std::string jsep_str = pInfo->jsep_str;
-		std::unique_ptr<webrtc::SessionDescriptionInterface> session_description =
-			webrtc::CreateSessionDescription(webrtc::SdpType::kOffer, jsep_str);
-		//as subscriber
-		if (InitializePeerConnection(handleId, false)) {
-			m_peer_connection_map[handleId]->SetRemoteDescription(session_description.release());
-			m_peer_connection_map[handleId]->CreateAnswer();
-
-		}
-		else {
-			main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
-		}
-		//peerConnection.setRemoteDescription(sdpObserver, sdp);
-		//peerConnection.createAnswer(connection.sdpObserver, sdpMediaConstraints);
-		break;
-	}
-
-	default:
-		RTC_NOTREACHED();
-		break;
-	}
 }
 
 /*----------------------------------------------------------------*/
