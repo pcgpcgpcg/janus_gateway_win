@@ -274,6 +274,7 @@ void ConductorWs::UIThreadCallback(int msg_id, void* data) {
 			m_peer_connection_map[handleId]->StartRenderer(MainWnd_, video_track);
 		}
 		track->Release();
+		delete pTrack;
 		break;
 	}
 
