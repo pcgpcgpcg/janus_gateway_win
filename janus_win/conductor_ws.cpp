@@ -352,9 +352,27 @@ void ConductorWs::DrawVideos(PAINTSTRUCT& ps, RECT& rc) {
 	HBITMAP bmp_mem = NULL;
 	HGDIOBJ bmp_old = NULL;
 	POINT logical_area;
+	dc_mem = ::CreateCompatibleDC(ps.hdc);
+	::SetStretchBltMode(dc_mem, HALFTONE);
+	// Set the map mode so that the ratio will be maintained for us.			
+	for (size_t i = 0; i < arraysize(all_dc); ++i) {
+		SetMapMode(all_dc[i], MM_ISOTROPIC);
+		SetWindowExtEx(all_dc[i], rc.right, rc.bottom, NULL);
+		SetViewportExtEx(all_dc[i], rc.right, rc.bottom, NULL);
+	}
+	bmp_mem = ::CreateCompatibleBitmap(ps.hdc, rc.right, rc.bottom);
+	bmp_old = ::SelectObject(dc_mem, bmp_mem);
+
+	logical_area = { rc.right, rc.bottom };
+	DPtoLP(ps.hdc, &logical_area, 1);
+
+	HBRUSH brush = ::CreateSolidBrush(RGB(0, 0, 0));
+	RECT logical_rect = { 0, 0, logical_area.x, logical_area.y };
+	::FillRect(dc_mem, &logical_rect, brush);
+	::DeleteObject(brush);
+
 	int nIndex = 0;
 	for (auto &pc : m_peer_connection_map) {
-		nIndex++;
 		VideoRenderer* renderer = pc.second->renderer_.get();
 		if (renderer) {
 			AutoLock<VideoRenderer> local_lock(renderer);
@@ -364,33 +382,14 @@ void ConductorWs::DrawVideos(PAINTSTRUCT& ps, RECT& rc) {
 			const uint8_t* image = renderer->image();
 			if (image != NULL) {
 				//the first one is local renderer
-				if (!dc_mem) {
-					dc_mem = ::CreateCompatibleDC(ps.hdc);
-					::SetStretchBltMode(dc_mem, HALFTONE);
-					// Set the map mode so that the ratio will be maintained for us.			
-					for (size_t i = 0; i < arraysize(all_dc); ++i) {
-						SetMapMode(all_dc[i], MM_ISOTROPIC);
-						SetWindowExtEx(all_dc[i], width, height, NULL);
-						SetViewportExtEx(all_dc[i], rc.right, rc.bottom, NULL);
-					}
-					bmp_mem = ::CreateCompatibleBitmap(ps.hdc, rc.right, rc.bottom);
-					bmp_old = ::SelectObject(dc_mem, bmp_mem);
+				//int x = (logical_area.x / 2) - (width / 2);
+				//int y = (logical_area.y / 2) - (height / 2);
+				int x = (nIndex % 3)*(logical_area.x / 3);
+				int y = (nIndex / 3)*(logical_area.y / 2);
 
-					logical_area = { rc.right, rc.bottom };
-					DPtoLP(ps.hdc, &logical_area, 1);
-
-					HBRUSH brush = ::CreateSolidBrush(RGB(0, 0, 0));
-					RECT logical_rect = { 0, 0, logical_area.x, logical_area.y };
-					::FillRect(dc_mem, &logical_rect, brush);
-					::DeleteObject(brush);
-
-					int x = (logical_area.x / 2) - (width / 2);
-					int y = (logical_area.y / 2) - (height / 2);
-
-					StretchDIBits(dc_mem, x, y, width, height, 0, 0, width, height, image,
-						&bmi, DIB_RGB_COLORS, SRCCOPY);
-				}
-				else {
+				StretchDIBits(dc_mem, x, y, logical_area.x / 3, logical_area.y / 2, 0, 0, width, height, image,
+					&bmi, DIB_RGB_COLORS, SRCCOPY);
+				/*else {
 					if ((rc.right - rc.left) > 200 && (rc.bottom - rc.top) > 200) {
 						const BITMAPINFO& bmi = renderer->bmi();
 						image = renderer->image();
@@ -403,7 +402,7 @@ void ConductorWs::DrawVideos(PAINTSTRUCT& ps, RECT& rc) {
 							SRCCOPY);
 					}
 
-				}
+				}*/
 
 			}//end if (image != NULL)
 
@@ -429,6 +428,7 @@ void ConductorWs::DrawVideos(PAINTSTRUCT& ps, RECT& rc) {
 			//		DT_SINGLELINE | DT_CENTER | DT_VCENTER);
 			//	::SelectObject(ps.hdc, old_font);
 			//}
+			nIndex++;
 		}
 	}
 
