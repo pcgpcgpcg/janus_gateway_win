@@ -112,6 +112,12 @@ bool ConductorWs::CreatePeerConnection(long long int handleId,bool dtls) {
 	config.continual_gathering_policy = webrtc::PeerConnectionInterface::ContinualGatheringPolicy::GATHER_CONTINUALLY;
 	config.sdp_semantics = webrtc::SdpSemantics::kUnifiedPlan;
 	config.enable_dtls_srtp = dtls;
+	//additonal setting
+	if (!config.prerenderer_smoothing()) {
+		config.set_prerenderer_smoothing(true);
+	}
+	config.disable_ipv6 = true;
+	config.enable_rtp_data_channel = false;
 	webrtc::PeerConnectionInterface::IceServer server;
 	server.uri = GetPeerConnectionString();
 	config.servers.push_back(server);
