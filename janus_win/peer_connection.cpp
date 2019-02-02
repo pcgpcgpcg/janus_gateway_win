@@ -99,6 +99,8 @@ void PeerConnection::OnIceCandidate(const webrtc::IceCandidateInterface* candida
 //peer connection interface implementation
 void PeerConnection::CreateOffer() {
 	//TODO RTCOfferAnswerOptions should set as a option
+	//RTCOfferAnswerOptions include 
+	//offer_to_receive_video offer_to_receive_audio voice_activity_detection ice_restart use_rtp_mux
 	peer_connection_->CreateOffer(
 		this, webrtc::PeerConnectionInterface::RTCOfferAnswerOptions());
 }

@@ -683,7 +683,7 @@ void ConductorWs::JoinRoom(std::string pluginName,long long int handleId,long lo
 		jmessage["transaction"] = transactionID;
 		jmessage["session_id"] = m_SessionId;
 		jmessage["handle_id"] = handleId;
-		client_->SendToJanus(writer.write(jmessage));
+		client_->SendToJanus(writer.write(jmessage)); 
 		//After joined,Then create offer
 	}
 	else if (pluginName == "janus.plugin.audiobridge") {
